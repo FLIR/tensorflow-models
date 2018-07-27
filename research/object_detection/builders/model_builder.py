@@ -41,6 +41,7 @@ from object_detection.models.ssd_mobilenet_v1_feature_extractor import SSDMobile
 from object_detection.models.ssd_mobilenet_v1_fpn_feature_extractor import SSDMobileNetV1FpnFeatureExtractor
 from object_detection.models.ssd_mobilenet_v1_ppn_feature_extractor import SSDMobileNetV1PpnFeatureExtractor
 from object_detection.models.ssd_mobilenet_v2_feature_extractor import SSDMobileNetV2FeatureExtractor
+from object_detection.models.ssd_densenet_121_feature_extractor import SSDDenseNet121FeatureExtractor
 from object_detection.protos import model_pb2
 
 # A map of names to SSD feature extractors.
@@ -60,6 +61,7 @@ SSD_FEATURE_EXTRACTOR_CLASS_MAP = {
     'ssd_resnet152_v1_ppn':
         ssd_resnet_v1_ppn.SSDResnet152V1PpnFeatureExtractor,
     'embedded_ssd_mobilenet_v1': EmbeddedSSDMobileNetV1FeatureExtractor,
+    'ssd_densenet_121': SSDDenseNet121FeatureExtractor
 }
 
 # A map of names to Faster R-CNN feature extractors.
