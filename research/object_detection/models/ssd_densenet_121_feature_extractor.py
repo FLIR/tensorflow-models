@@ -14,8 +14,6 @@
 # ==============================================================================
 
 """SSDFeatureExtractor for DenseNet-121 features.
-==================PUDAE VERSION=====================
-
         Implementing the densenet from 
         https://github.com/pudae/tensorflow-densenet
         with hopes to finetune of their pretrained models
@@ -27,7 +25,22 @@ from object_detection.models import feature_map_generators
 from object_detection.utils import ops
 from object_detection.utils import shape_utils
 
-from densenet.densenet import densenet121
+from nets.densenet import densenet121
+
+wrng = """
+      THIS VERSION OF DENSENET MAY BE DEPRICATED.
+      PULL LATEST VERSION FROM:
+      
+      https://github.com/Jay-Roberts/tensorflow-densenet
+
+      AND OVERWRITE THIS FILE. 
+
+      object_detection/slim/nets/
+      """
+
+print("="*100)
+print(wrng)
+print('='*100)
 
 slim = tf.contrib.slim
 
