@@ -125,6 +125,19 @@ def get_variables_available_in_checkpoint(variables,
     raise ValueError('`variables` is expected to be a list or dict.')
   ckpt_reader = tf.train.NewCheckpointReader(checkpoint_path)
   ckpt_vars_to_shape_map = ckpt_reader.get_variable_to_shape_map()
+  #
+  #
+  #with open('ckpt_vars.txt','w') as f:
+  #  for v in ckpt_vars_to_shape_map:
+  #    f.write(v+'\n')
+  #with open('given_vars.txt','w') as f:
+  #  for v in variable_names_map:
+  #    f.write(v+'\n')
+  #from jtools.jbug import stop_here, peek
+  
+  #
+  #
+  #num_found = 0
   if not include_global_step:
     ckpt_vars_to_shape_map.pop(tf.GraphKeys.GLOBAL_STEP, None)
   vars_in_ckpt = {}
@@ -132,6 +145,7 @@ def get_variables_available_in_checkpoint(variables,
     if variable_name in ckpt_vars_to_shape_map:
       if ckpt_vars_to_shape_map[variable_name] == variable.shape.as_list():
         vars_in_ckpt[variable_name] = variable
+        #num_found+=1
       else:
         logging.warning('Variable [%s] is available in checkpoint, but has an '
                         'incompatible shape with model variable.',
@@ -139,6 +153,9 @@ def get_variables_available_in_checkpoint(variables,
     else:
       logging.warning('Variable [%s] is not available in checkpoint',
                       variable_name)
+  #g.close()
+  #peek('num_found' ,num_found)
+  #stop_here('variables written',157,__file__)
   if isinstance(variables, list):
     return vars_in_ckpt.values()
   return vars_in_ckpt

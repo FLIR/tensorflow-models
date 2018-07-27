@@ -115,6 +115,8 @@ class SSDDenseNet121FeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
     }
 
     with slim.arg_scope(self._conv_hyperparams_fn()):
+      # scope must be densenet121 because thats
+      # how they are saved in the checkpoint
       with tf.variable_scope('densenet121',
                              reuse=self._reuse_weights) as scope:
         _, end_points = densenet121(
