@@ -120,15 +120,15 @@ class SSDDenseNet121FeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
         _, end_points = densenet121(
             ops.pad_to_multiple(preprocessed_inputs, self._pad_to_multiple),
             num_classes=90,
-            stop_short=True)
+            final_layer='transisition_block3')
         
         #with open('function_vars.txt','w') as f:
         #  g_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
         #  for v in g_vars:
         #    f.write(v.name+'\n')
         
-        from jbug import stop_here
-        stop_here(134,__file__,'testing')
+        from jtools.jbug import stop_here
+        stop_here('testing',131,__file__)
         feature_maps = feature_map_generators.multi_resolution_feature_maps(
             feature_map_layout=feature_map_layout,
             depth_multiplier=self._depth_multiplier,
