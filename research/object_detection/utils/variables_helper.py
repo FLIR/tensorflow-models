@@ -138,6 +138,8 @@ def get_variables_available_in_checkpoint(variables,
   #
   #
   #num_found = 0
+  total_in_ckpt  = len(ckpt_vars_to_shape_map.keys())
+  num_not_found = 0
   if not include_global_step:
     ckpt_vars_to_shape_map.pop(tf.GraphKeys.GLOBAL_STEP, None)
   vars_in_ckpt = {}
@@ -151,8 +153,10 @@ def get_variables_available_in_checkpoint(variables,
                         'incompatible shape with model variable.',
                         variable_name)
     else:
-      logging.warning('Variable [%s] is not available in checkpoint',
-                      variable_name)
+      num_not_found+=1
+      logging.warning('Variable [%s] is not available in checkpoint. (Missing  %d / %d )',
+                      variable_name, num_not_found, total_in_ckpt)
+
   #g.close()
   #peek('num_found' ,num_found)
   #stop_here('variables written',157,__file__)
