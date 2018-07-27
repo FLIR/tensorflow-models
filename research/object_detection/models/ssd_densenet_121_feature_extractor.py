@@ -27,14 +27,11 @@ from object_detection.models import feature_map_generators
 from object_detection.utils import ops
 from object_detection.utils import shape_utils
 
-try:
-  from densenet import densenet121
-except ImportError:
-  print('If you are using densenet this imports PUDAE model \n ============= DOUBLE CHECK THIS IS THE MODEL YOU WANT ================')
+from densenet.densenet import densenet121
 
 slim = tf.contrib.slim
 
-class SSDDenseNetFeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
+class SSDDenseNet121FeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
   """SSD Feature Extractor using DenseNet features."""
 
   def __init__(self,
@@ -69,7 +66,7 @@ class SSDDenseNetFeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
     Raises:
       ValueError: If `override_base_feature_extractor_hyperparams` is False.
     """
-    super(SSDDenseNetFeatureExtractor, self).__init__(
+    super(SSDDenseNet121FeatureExtractor, self).__init__(
         is_training, depth_multiplier, min_depth, pad_to_multiple,
         conv_hyperparams_fn, reuse_weights, use_explicit_padding, use_depthwise,
         override_base_feature_extractor_hyperparams)
@@ -130,7 +127,8 @@ class SSDDenseNetFeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
         #  for v in g_vars:
         #    f.write(v.name+'\n')
         
-        #assert 1 == 0, '(ssd_densenet_121_pudae_feature_extractor 134) Break here'
+        from jbug import stop_here
+        stop_here(134,__file__,'testing')
         feature_maps = feature_map_generators.multi_resolution_feature_maps(
             feature_map_layout=feature_map_layout,
             depth_multiplier=self._depth_multiplier,
