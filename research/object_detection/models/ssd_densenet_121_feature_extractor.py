@@ -27,23 +27,6 @@ from object_detection.utils import shape_utils
 
 from nets.densenet import densenet121
 
-wrng = """
-      THIS VERSION OF DENSENET MAY BE DEPRICATED.
-      PULL LATEST VERSION FROM:
-      
-      https://github.com/Jay-Roberts/tensorflow-densenet
-
-      AND OVERWRITE THIS FILE. 
-
-      object_detection/slim/nets/
-      """
-
-print("="*100)
-print(wrng)
-print('='*100)
-
-slim = tf.contrib.slim
-
 class SSDDenseNet121FeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
   """SSD Feature Extractor using DenseNet features."""
 
