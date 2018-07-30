@@ -27,6 +27,8 @@ from object_detection.utils import shape_utils
 
 from nets.densenet import densenet121
 
+slim = tf.contrib.slim
+
 class SSDDenseNet121FeatureExtractor(ssd_meta_arch.SSDFeatureExtractor):
   """SSD Feature Extractor using DenseNet features."""
 
