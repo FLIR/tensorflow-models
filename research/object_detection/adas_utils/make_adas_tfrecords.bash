@@ -1,15 +1,17 @@
 
-TRAIN_IMAGE_DIR=/home/jroberts/adas_test1000/merged/train/Data
-VAL_IMAGE_DIR=/home/jroberts/adas_test1000/merged/val/Data
+IMAGE_DIR_BASE=/home/jroberts/conservator_datasets/ADAS/merged
 
-TRAIN_ANNOTATIONS_FILE=/home/jroberts/adas_test1000/merged/train/merged_annotations.json
-VAL_ANNOTATIONS_FILE=/home/jroberts/adas_test1000/merged/val/merged_annotations.json
+TRAIN_IMAGE_DIR=$IMAGE_DIR_BASE/train/PreviewData
+VAL_IMAGE_DIR=$IMAGE_DIR_BASE/val/PreviewData
 
-OUTPUT_DIR=/home/jroberts/adas_test1000/tfrecords
+TRAIN_ANNOTATIONS_FILE=$IMAGE_DIR_BASE/train/merged_annotations.json
+VAL_ANNOTATIONS_FILE=$IMAGE_DIR_BASE/val/merged_annotations.json
+
+OUTPUT_DIR=/home/jroberts/conservator_datasets/ADAS/merged/trecords
 
 TRAIN_SHARDS=2
 
-python create_adas_tf_record.py --logtostderr \
+python ../dataset_tools/create_adas_tf_record.py --logtostderr \
       --train_image_dir=$TRAIN_IMAGE_DIR \
       --val_image_dir=$VAL_IMAGE_DIR \
       --test_image_dir=$TEST_IMAGE_DIR \
