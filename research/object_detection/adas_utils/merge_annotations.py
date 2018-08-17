@@ -2,6 +2,20 @@ import json
 import os 
 import argparse
 
+"""
+Merges annotations found in Annotations directory of
+ADAS datasets into one large annotations json file
+which is labeled to be consistent with MSCOCO's
+Annotations jsons. 
+
+The catids are from the catids.json from fruitbasket.
+
+Example usage:
+python merge_annotations.py --anno-dir {$PATH_TO_ANNOTATIONS}\
+                            --catids {$PATH_TO_CATEGORY_IDS}\
+"""
+
+
 def merge_annotations(anno_dir,catids,out_name, 
                         verbose = 0, keep_blank_annotations = False):
     num_images = len(os.listdir(anno_dir))

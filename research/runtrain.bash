@@ -1,7 +1,7 @@
 # Sample training script
 
-PIPELINE_CONFIG_PATH=ssd_densenet_121_coco.config
-MODEL_DIR=densenet121_test
+PIPELINE_CONFIG_PATH=ssd_mobilenet_v1_fpn_shared_box_predictor_640x640_coco14_sync.config
+MODEL_DIR=testnet
 NUM_TRAIN_STEPS=50
 NUM_EVAL_STEPS=20
 
