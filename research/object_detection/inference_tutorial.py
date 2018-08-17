@@ -1,3 +1,10 @@
+# Runs inference on pictures in test_images/
+# Just a slight modification of the ipyb here:
+#
+#   https://github.com/tensorflow/models/blob/master/research/object_detection/object_detection_tutorial.ipynb
+#
+# Use it to test saved models when evaluations are iffy.
+
 import numpy as np
 import os
 import sys
