@@ -13,12 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-r"""Convert raw COCO dataset to TFRecord for object_detection.
+r"""Convert raw adas dataset to TFRecord for object_detection.
 
 Please note that this tool creates sharded output files.
 
 Example usage:
-    python create_coco_tf_record.py --logtostderr \
+    python create_adas_tf_record.py --logtostderr \
       --train_image_dir="${TRAIN_IMAGE_DIR}" \
       --val_image_dir="${VAL_IMAGE_DIR}" \
       --test_image_dir="${TEST_IMAGE_DIR}" \
@@ -41,6 +41,7 @@ import PIL.Image
 
 from pycocotools import mask
 import tensorflow as tf
+import imghdr
 
 from object_detection.dataset_tools import tf_record_creation_util
 from object_detection.utils import dataset_util
@@ -61,10 +62,9 @@ tf.flags.DEFINE_string('train_annotations_file', '',
                        'Training annotations JSON file.')
 tf.flags.DEFINE_string('val_annotations_file', '',
                        'Validation annotations JSON file.')
-tf.flags.DEFINE_string('testdev_annotations_file', '',
-                       'Test-dev annotations JSON file.')
 tf.flags.DEFINE_string('output_dir', '/tmp/', 'Output data directory.')
-
+tf.flags.DEFINE_integer('train_shards',1,'number of shards to break the training set into')
+tf.flags.DEFINE_integer('val_shards',1,'number of shards to break the val set into')
 FLAGS = flags.FLAGS
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -79,20 +79,20 @@ def create_tf_example(image,
 
   Args:
     image: dict with keys:
-      [u'license', u'file_name', u'coco_url', u'height', u'width',
+      [u'license', u'file_name', u'adas_url', u'height', u'width',
       u'date_captured', u'flickr_url', u'id']
     annotations_list:
       list of dicts with keys:
       [u'segmentation', u'area', u'iscrowd', u'image_id',
       u'bbox', u'category_id', u'id']
-      Notice that bounding box coordinates in the official COCO dataset are
+      Notice that bounding box coordinates in the official adas dataset are
       given as [x, y, width, height] tuples using absolute coordinates where
       x, y represent the top-left (0-indexed) corner.  This function converts
       to the format expected by the Tensorflow Object Detection API (which is
       which is [ymin, xmin, ymax, xmax] with coordinates normalized relative
       to image size).
     image_dir: directory containing the image files.
-    category_index: a dict containing COCO category information keyed
+    category_index: a dict containing adas category information keyed
       by the 'id' field of each category.  See the
       label_map_util.create_category_index function.
     include_masks: Whether to include instance segmentations masks
@@ -113,7 +113,16 @@ def create_tf_example(image,
   with tf.gfile.GFile(full_path, 'rb') as fid:
     encoded_jpg = fid.read()
   encoded_jpg_io = io.BytesIO(encoded_jpg)
-  image = PIL.Image.open(encoded_jpg_io)
+  
+
+  image = PIL.Image.open(encoded_jpg_io).convert(mode='RGB')
+  
+  msg = """ 
+            Tensorflow's object detection pipeline expects .jpeg
+            compression but found .{}.
+        """
+  assert imghdr.what(full_path) == 'jpeg', msg.format(imghdr.what(full_path))
+
   key = hashlib.sha256(encoded_jpg).hexdigest()
 
   xmin = []
@@ -184,6 +193,11 @@ def create_tf_example(image,
       'image/object/area':
           dataset_util.float_list_feature(area),
   }
+  #keyz = [k for k in feature_dict.keys() if k != 'image/encoded']
+  #for k in keyz:
+  #  print(k+':',feature_dict[k])
+  #assert False
+  
   if include_masks:
     feature_dict['image/object/mask'] = (
         dataset_util.bytes_list_feature(encoded_mask_png))
@@ -191,9 +205,9 @@ def create_tf_example(image,
   return key, example, num_annotations_skipped
 
 
-def _create_tf_record_from_coco_annotations(
+def _create_tf_record_from_adas_annotations(
     annotations_file, image_dir, output_path, include_masks, num_shards):
-  """Loads COCO annotation json files and converts to tf.Record format.
+  """Loads adas annotation json files and converts to tf.Record format.
 
   Args:
     annotations_file: JSON file containing bounding box annotations.
@@ -248,36 +262,26 @@ def _create_tf_record_from_coco_annotations(
 def main(_):
   assert FLAGS.train_image_dir, '`train_image_dir` missing.'
   assert FLAGS.val_image_dir, '`val_image_dir` missing.'
-  assert FLAGS.test_image_dir, '`test_image_dir` missing.'
   assert FLAGS.train_annotations_file, '`train_annotations_file` missing.'
   assert FLAGS.val_annotations_file, '`val_annotations_file` missing.'
-  assert FLAGS.testdev_annotations_file, '`testdev_annotations_file` missing.'
 
   if not tf.gfile.IsDirectory(FLAGS.output_dir):
     tf.gfile.MakeDirs(FLAGS.output_dir)
-  train_output_path = os.path.join(FLAGS.output_dir, 'coco_train.record')
-  val_output_path = os.path.join(FLAGS.output_dir, 'coco_val.record')
-  testdev_output_path = os.path.join(FLAGS.output_dir, 'coco_testdev.record')
+  train_output_path = os.path.join(FLAGS.output_dir, 'adas_train.record')
+  val_output_path = os.path.join(FLAGS.output_dir, 'adas_val.record')
 
-  _create_tf_record_from_coco_annotations(
+  _create_tf_record_from_adas_annotations(
       FLAGS.train_annotations_file,
       FLAGS.train_image_dir,
       train_output_path,
       FLAGS.include_masks,
-      num_shards=100)
-  _create_tf_record_from_coco_annotations(
+      num_shards=FLAGS.train_shards)
+  _create_tf_record_from_adas_annotations(
       FLAGS.val_annotations_file,
       FLAGS.val_image_dir,
       val_output_path,
       FLAGS.include_masks,
-      num_shards=10)
-  _create_tf_record_from_coco_annotations(
-      FLAGS.testdev_annotations_file,
-      FLAGS.test_image_dir,
-      testdev_output_path,
-      FLAGS.include_masks,
-      num_shards=100)
-
+      num_shards=FLAGS.val_shards)
 
 if __name__ == '__main__':
   tf.app.run()
