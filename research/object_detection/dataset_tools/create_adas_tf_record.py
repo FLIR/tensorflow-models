@@ -14,8 +14,8 @@
 # ==============================================================================
 
 r"""Convert raw adas dataset to TFRecord for object_detection.
-
-Please note that this tool creates sharded output files.
+    Expects all images in jpeg compression format.
+    Please note that this tool creates sharded output files.
 
 Example usage:
     python create_adas_tf_record.py --logtostderr \
