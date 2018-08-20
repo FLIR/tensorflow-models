@@ -39,7 +39,12 @@ def main(model_path):
 
     # Path to frozen detection graph. This is the actual model that is used for the object detection.
     PATH_TO_FROZEN_GRAPH = PRE_TRAINED_ZOO[model_path]
-    
+    mdl_msg = """
+                Using model:
+                    {}
+                :)
+                """
+    print(mdl_msg.format(PATH_TO_FROZEN_GRAPH))
 
     # List of the strings that is used to add correct label for each box.
     PATH_TO_LABELS = os.path.join('data', 'mscoco_label_map.pbtxt')
@@ -53,6 +58,7 @@ def main(model_path):
         serialized_graph = fid.read()
         od_graph_def.ParseFromString(serialized_graph)
         tf.import_graph_def(od_graph_def, name='')
+    
 
     label_map = label_map_util.load_labelmap(PATH_TO_LABELS)
     categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
@@ -66,10 +72,9 @@ def main(model_path):
     # 
     PATH_TO_TEST_IMAGES_DIR = 'test_images'
     TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, x) for x in os.listdir(PATH_TO_TEST_IMAGES_DIR)]
+    TEST_IMAGE_PATHS = [x for x in TEST_IMAGE_PATHS if os.path.basename(x).split('.')[-1] in ['jpg','jpeg']]
 
-    print(TEST_IMAGE_PATHS)
-    # Size, in inches, of the output images.
-    IMAGE_SIZE = (12, 8)
+    #print(TEST_IMAGE_PATHS)
 
     def run_inference_for_single_image(image, graph):
         with graph.as_default():
@@ -86,6 +91,7 @@ def main(model_path):
                     if tensor_name in all_tensor_names:
                         tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(
                         tensor_name)
+
                 if 'detection_masks' in tensor_dict:
                     # The following processing is only for single image
                     detection_boxes = tf.squeeze(tensor_dict['detection_boxes'], [0])
@@ -101,6 +107,8 @@ def main(model_path):
                     # Follow the convention by adding back the batch dimension
                     tensor_dict['detection_masks'] = tf.expand_dims(
                         detection_masks_reframed, 0)
+                
+
                 image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
 
                 # Run inference
@@ -129,6 +137,8 @@ def main(model_path):
         # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
         image_np_expanded = np.expand_dims(image_np, axis=0)
         # Actual detection.
+        detection_graph = tf.get_default_graph()
+        
         output_dict = run_inference_for_single_image(image_np, detection_graph)
         # Visualization of the results of a detection.
         vis_util.visualize_boxes_and_labels_on_image_array(
