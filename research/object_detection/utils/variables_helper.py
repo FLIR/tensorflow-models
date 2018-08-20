@@ -150,8 +150,11 @@ def get_variables_available_in_checkpoint(variables,
         #num_found+=1
       else:
         logging.warning('Variable [%s] is available in checkpoint, but has an '
-                        'incompatible shape with model variable.',
-                        variable_name)
+                        'incompatible shape with model variable. Checkpoint '
+                        'shape: [%s], model variable shape: [%s]. This '
+                        'variable will not be initialized from the checkpoint.',
+                        variable_name, ckpt_vars_to_shape_map[variable_name],
+                        variable.shape.as_list())
     else:
       num_not_found+=1
       logging.warning('Variable [%s] is not available in checkpoint. (Missing  %d / %d )',
