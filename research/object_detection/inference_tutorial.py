@@ -72,8 +72,11 @@ def main(model_path):
     # 
     PATH_TO_TEST_IMAGES_DIR = 'test_images'
     TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, x) for x in os.listdir(PATH_TO_TEST_IMAGES_DIR)]
+    
+    # Get just the jp(e)gs. Make this better later
     TEST_IMAGE_PATHS = [x for x in TEST_IMAGE_PATHS if os.path.basename(x).split('.')[-1] in ['jpg','jpeg']]
-
+    # Shrink it for testing
+    #TEST_IMAGE_PATHS = TEST_IMAGE_PATHS[:6]
     #print(TEST_IMAGE_PATHS)
 
     def run_inference_for_single_image(image, graph):
