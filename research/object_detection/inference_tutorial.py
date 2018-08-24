@@ -40,9 +40,10 @@ def main(model_path):
     # Path to frozen detection graph. This is the actual model that is used for the object detection.
     PATH_TO_FROZEN_GRAPH = PRE_TRAINED_ZOO[model_path]
     mdl_msg = """
+                =======================================
                 Using model:
                     {}
-                :)
+                =======================================
                 """
     print(mdl_msg.format(PATH_TO_FROZEN_GRAPH))
 
