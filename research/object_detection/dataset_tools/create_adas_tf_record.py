@@ -120,8 +120,9 @@ def create_tf_example(image,
   msg = """ 
             Tensorflow's object detection pipeline expects .jpeg
             compression but found .{}.
+                {}
         """
-  assert imghdr.what(full_path) == 'jpeg', msg.format(imghdr.what(full_path))
+  assert imghdr.what(full_path) == 'jpeg', msg.format(imghdr.what(full_path),full_path)
 
   key = hashlib.sha256(encoded_jpg).hexdigest()
 
