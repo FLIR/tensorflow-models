@@ -29,6 +29,7 @@ echo "Freezing the trained graph"
 echo "==========================="
 
 # From tensorflow/models/research/
+
 INPUT_TYPE=image_tensor
 PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
 TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
