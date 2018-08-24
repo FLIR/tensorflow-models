@@ -35,7 +35,22 @@ PRE_TRAINED_ZOO = {
     'recent':'../test_freeze/frozen_inference_graph.pb'
     }
 
-def main(model_path):
+def load_image_into_numpy_array(image,adas=False):
+    (im_width, im_height) = image.size
+    result = np.array(image.getdata())
+
+    if adas:
+        presult = result.reshape((im_height, im_width)).astype(np.uint8)
+        
+        result = np.zeros((im_height,im_width,3))
+        result = np.stack((presult,)*3, axis=-1)
+        
+    else:
+        result = result.reshape((im_height, im_width,3)).astype(np.uint8)
+    
+    return result
+
+def main(model_path,adas=False,img_dir=None):
 
     # Path to frozen detection graph. This is the actual model that is used for the object detection.
     PATH_TO_FROZEN_GRAPH = PRE_TRAINED_ZOO[model_path]
@@ -48,7 +63,10 @@ def main(model_path):
     print(mdl_msg.format(PATH_TO_FROZEN_GRAPH))
 
     # List of the strings that is used to add correct label for each box.
-    PATH_TO_LABELS = os.path.join('data', 'mscoco_label_map.pbtxt')
+    if adas:
+        PATH_TO_LABELS = os.path.join('data', 'adas_label_map.pbtxt')    
+    else:
+        PATH_TO_LABELS = os.path.join('data', 'mscoco_label_map.pbtxt')
 
     NUM_CLASSES = 90
 
@@ -65,15 +83,10 @@ def main(model_path):
     categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
     category_index = label_map_util.create_category_index(categories)
 
-    def load_image_into_numpy_array(image):
-        (im_width, im_height) = image.size
-        return np.array(image.getdata()).reshape(
-        (im_height, im_width, 3)).astype(np.uint8)
-
     # 
-    PATH_TO_TEST_IMAGES_DIR = 'test_images'
+    PATH_TO_TEST_IMAGES_DIR = img_dir
     TEST_IMAGE_PATHS = [ os.path.join(PATH_TO_TEST_IMAGES_DIR, x) for x in os.listdir(PATH_TO_TEST_IMAGES_DIR)]
-    
+    print(TEST_IMAGE_PATHS)
     # Get just the jp(e)gs. Make this better later
     TEST_IMAGE_PATHS = [x for x in TEST_IMAGE_PATHS if os.path.basename(x).split('.')[-1] in ['jpg','jpeg']]
     # Shrink it for testing
@@ -135,9 +148,10 @@ def main(model_path):
         N = int(np.sqrt(N))
         n = int(np.sqrt(N))
         image = Image.open(image_path)
+        print(image_path)
         # the array based representation of the image will be used later in order to prepare the
         # result image with boxes and labels on it.
-        image_np = load_image_into_numpy_array(image)
+        image_np = load_image_into_numpy_array(image,adas=adas)
         # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
         image_np_expanded = np.expand_dims(image_np, axis=0)
         # Actual detection.
@@ -155,7 +169,8 @@ def main(model_path):
             use_normalized_coordinates=True,
             line_thickness=8)
         plt.figure(int(i/N)+1)
-        plt.subplot(n,n,1+i%N)
+        #plt.subplot(n,n,1+i%N)
+        plt.subplot(3,3,i+1)
         #plt.figure(figsize=IMAGE_SIZE)
         plt.imshow(image_np)
     plt.show()
@@ -175,6 +190,17 @@ if __name__ == "__main__":
                         default=None
                         )
     
+    parser.add_argument('--adas',
+                        help='Path to a froze pb file for inference. If model_name is also specified this will be used instead',
+                        type=bool,
+                        default=False
+                        )
+    
+    parser.add_argument('--img-dir',
+                        help='Directory containing test images',
+                        type=str,
+                        default='test_images'
+                        )
     args = parser.parse_args()
 
     names_msg =  """model_name must be from
@@ -188,4 +214,4 @@ if __name__ == "__main__":
     else:
         model_path = args.model_pb_file
     
-    main(model_path)
+    main(model_path, adas=args.adas, img_dir=args.img_dir)
