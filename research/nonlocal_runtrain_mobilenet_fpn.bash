@@ -12,10 +12,10 @@ cnd_gpus=${cnd_gpus#,}
 # Set the pipeline config
 # This should have everything to run train and evaluation.
 #PIPELINE_CONFIG_PATH=ssd_inception_v2_coco.config
-PIPELINE_CONFIG_PATH=ssd_resnet50_v1_fpn_shared_box_predictor_640x640_adas.config
+PIPELINE_CONFIG_PATH=ssd_mobilenet_v1_fpn_shared_box_predictor_640x640_adas.config
 
-MODEL_DIR=resnet50_v1_fpn
-NUM_TRAIN_STEPS=10
+MODEL_DIR=mobilenet_v1_fpn
+NUM_TRAIN_STEPS=2
 NUM_EVAL_STEPS=2
 
 if [ -d "$MODEL_DIR" ]; then
@@ -40,7 +40,7 @@ INPUT_TYPE=image_tensor
 PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
 TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
 
-EXPORT_DIR=resnet50_v1_fpn_Freeze
+EXPORT_DIR=mobilenet_v1_fpn_Freeze
 
 CUDA_VISIBLE_DEVICES=$cnd_gpus python object_detection/export_inference_graph.py \
     --input_type=${INPUT_TYPE} \
