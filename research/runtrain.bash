@@ -17,7 +17,7 @@ print_usage() {
             -e: Number of eval steps. (Default $NUM_EVAL_STEPS)
             -p: Path to pipeline config. (Default $PIPELINE_CONFIG_PATH)
             -m: Model name for the directory of chkpts and such. (Default $MODEL_DIR)
-            "
+"
 }
 
 while getopts 'hg:t:e:m:p:' flag; do
@@ -27,8 +27,8 @@ while getopts 'hg:t:e:m:p:' flag; do
     e) NUM_EVAL_STEPS="${OPTARG}" ;;
     m) MODEL_DIR="${OPTARG}" ;;
     p) PIPELINE_CONFIG_PATH="${OPTARG}" ;;
-    h) print_usage ;;
-    *) print_usage
+    h) print_usage && exit;;
+    *) print_usage && exit
        exit 1 ;;
   esac
 done
