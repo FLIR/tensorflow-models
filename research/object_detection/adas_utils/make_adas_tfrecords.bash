@@ -13,30 +13,34 @@ OUTPUT_DIR=$2     #Where to save the tfrecords
 #           Data/ 
 
 
-TRAIN_IMAGE_DIR=$DIR_BASE/train/PreviewData     
-VAL_IMAGE_DIR=$DIR_BASE/val/PreviewData
+#TRAIN_IMAGE_DIR=$DIR_BASE/train/PreviewData     
+#VAL_IMAGE_DIR=$DIR_BASE/val/PreviewData
+TRAIN_IMAGE_DIR=$DIR_BASE/train/Data     
+VAL_IMAGE_DIR=$DIR_BASE/val/Data
 
 TRAIN_ANNOTATIONS_DIR=$DIR_BASE/train/Annotations/
 VAL_ANNOTATIONS_DIR=$DIR_BASE/val/Annotations/
 
 
 echo "Merging train annotations"
-python merge_annotations.py --anno-dir $TRAIN_ANNOTATIONS_DIR \
+#--out-name $DIR_BASE/train/merged_annotations.json \
+sudo python merge_annotations.py --anno-dir $TRAIN_ANNOTATIONS_DIR \
                               --catids $DIR_BASE/catids.json \
-                              --out-name $DIR_BASE/train/merged_annotations.json \
+                              --out-name train_merged_annotations.json \
                               --verbose 1
 
 echo "Merging val annotations"
-python merge_annotations.py --anno-dir $VAL_ANNOTATIONS_DIR \
+sudo python merge_annotations.py --anno-dir $VAL_ANNOTATIONS_DIR \
                               --catids $DIR_BASE/catids.json \
-                              --out-name $DIR_BASE/val/merged_annotations.json \
+                              --out-name val_merged_annotations.json \
                               --verbose 1
                               
 # Make the merged annotations files
 # to be compatible with MSCOCO format
-TRAIN_ANNOTATIONS_FILE=$DIR_BASE/train/merged_annotations.json    
-VAL_ANNOTATIONS_FILE=$DIR_BASE/val/merged_annotations.json        
-
+#TRAIN_ANNOTATIONS_FILE=$DIR_BASE/train/merged_annotations.json    
+#VAL_ANNOTATIONS_FILE=$DIR_BASE/val/merged_annotations.json        
+TRAIN_ANNOTATIONS_FILE=train_merged_annotations.json    
+VAL_ANNOTATIONS_FILE=val_merged_annotations.json
 TRAIN_SHARDS=2    # Sharding a dataset can help throughput during training (Or so TF says....)
 
 echo "Creating tfrecords"

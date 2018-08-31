@@ -31,6 +31,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import hashlib
 import io
 import json
@@ -247,9 +248,11 @@ def _create_tf_record_from_adas_annotations(
                     missing_annotation_count)
 
     total_num_annotations_skipped = 0
+    t0 = time.time()
     for idx, image in enumerate(images):
-      if idx % 100 == 0:
-        tf.logging.info('On image %d of %d', idx, len(images))
+      if idx % 500 == 0:
+        tf.logging.info('On image %d of %d. (%.4f secs)', idx, len(images), time.time()-t0)
+        t0 = time.time()
       annotations_list = annotations_index[image['id']]
       _, tf_example, num_annotations_skipped = create_tf_example(
           image, annotations_list, image_dir, category_index, include_masks)

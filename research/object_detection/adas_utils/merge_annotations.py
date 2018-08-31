@@ -1,7 +1,7 @@
 import json 
 import os 
 import argparse
-
+import time 
 """
 Merges annotations found in Annotations directory of
 ADAS datasets into one large annotations json file
@@ -13,6 +13,7 @@ The catids are from the catids.json from fruitbasket.
 Example usage:
 python merge_annotations.py --anno-dir {$PATH_TO_ANNOTATIONS}\
                             --catids {$PATH_TO_CATEGORY_IDS}\
+                            --outname {$PATH/TO/OUTPUT.json}
 """
 
 
@@ -24,12 +25,14 @@ def merge_annotations(anno_dir,catids,out_name,
     annos_data = [0]*num_images
     blank_annos = []
     # Add the images and annotations
-
+    t0 = time.time()
     for i, anno_file in enumerate(os.listdir(anno_dir)):
         path = anno_dir+anno_file
-        if i % 100 == 0 and verbose > 0:
-            msg = "Processing annotation file %d/%d"%(i,num_images)
-            print(msg)
+        
+        if i % 500 == 0 and verbose > 0:
+            msg = "Processing annotation file {}/{}. ({} secs)"
+            print(msg.format(i,num_images,round(time.time()-t0,4)))
+            t0 = time.time()
         with open(path,'r') as f:
             data = json.load(f)
             img_data = data['image']
