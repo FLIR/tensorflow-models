@@ -6,6 +6,7 @@ PIPELINE_CONFIG_PATH=ssd_inception_v2_adas.config
 MODEL_DIR=testnet
 NUM_TRAIN_STEPS=200100
 NUM_EVAL_STEPS=3100
+FREEZE=false
 gpus=0
 
 print_usage() {
@@ -17,16 +18,18 @@ print_usage() {
             -e: Number of eval steps. (Default $NUM_EVAL_STEPS)
             -p: Path to pipeline config. (Default $PIPELINE_CONFIG_PATH)
             -m: Model name for the directory of chkpts and such. (Default $MODEL_DIR)
+            -f: Whether to run a freeze scrip for the model. (Default $FREEZE)
 "
 }
 
-while getopts 'hg:t:e:m:p:' flag; do
+while getopts 'hg:t:e:m:p:f' flag; do
   case "${flag}" in
     g) gpus="${OPTARG}" ;;
     t) NUM_TRAIN_STEPS="${OPTARG}";;
     e) NUM_EVAL_STEPS="${OPTARG}" ;;
     m) MODEL_DIR="${OPTARG}" ;;
     p) PIPELINE_CONFIG_PATH="${OPTARG}" ;;
+    f) FREEZE=true ;;
     h) print_usage && exit;;
     *) print_usage && exit
        exit 1 ;;
@@ -34,9 +37,9 @@ while getopts 'hg:t:e:m:p:' flag; do
 done
 
 echo "gpus: $gpus"
-echo "train_steps: "$NUM_TRAIN_STEPS
-echo "eval_steps: "$NUM_EVAL_STEPS
-echo "model: "$MODEL_DIR
+echo "train_steps: $NUM_TRAIN_STEPS"
+echo "eval_steps: $NUM_EVAL_STEPS"
+echo "model: $MODEL_DIR"
 
 if [ -d "$MODEL_DIR" ]; then
   echo "Model directory exists"
@@ -50,20 +53,24 @@ CUDA_VISIBLE_DEVICES=$gpus python object_detection/model_main.py \
     --num_eval_steps=${NUM_EVAL_STEPS} \
     --alsologtostderr
 
-echo "==========================="
-echo "Freezing the trained graph"
-echo "==========================="
 
-# Set input type to image
-INPUT_TYPE=image_tensor
-EXPORT_DIR=$MODEL_DIR"_freeze"
+if $FREEZE  
+then
+  echo "==========================="
+  echo "Freezing the trained graph"
+  echo "==========================="
 
-# Pick the most recent config which comes from training
-PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
-TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
+  # Set input type to image
+  INPUT_TYPE=image_tensor
+  EXPORT_DIR=$MODEL_DIR"_freeze"
 
-CUDA_VISIBLE_DEVICES=$cnd_gpus python object_detection/export_inference_graph.py \
-    --input_type=${INPUT_TYPE} \
-    --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
-    --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
-    --output_directory=${EXPORT_DIR}
+  # Pick the most recent config which comes from training
+  PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
+  TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
+
+  CUDA_VISIBLE_DEVICES=$cnd_gpus python object_detection/export_inference_graph.py \
+      --input_type=${INPUT_TYPE} \
+      --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
+      --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
+      --output_directory=${EXPORT_DIR}
+fi
