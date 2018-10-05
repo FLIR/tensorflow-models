@@ -1,3 +1,15 @@
+_usg = """
+         Looks inside tfrecords made by object_detection/dataset_tools/create_{adas,coco}_tfrecords.py
+         and displays or saves the images with the annotation boxes on them.
+         Example:
+            python peek_in_tfrecords.py --record Path/To/Record.tfrecord \\
+                                        --catids Path/To/catids.json \\
+                                        --num-images 10
+        
+         Will display a slideshow of 10 images. To go to next image us the 
+         space bar. If --save-dir is set then the images will not be displayed.
+       """
+
 import tensorflow as tf 
 import numpy as np 
 import json    
@@ -64,7 +76,7 @@ def adas_parser(serialized_example):
 
 def create_dataset_iterator(file_names):
     # Make the dataset
-    dataset = tf.data.TFRecordDataset(file_names)
+    dataset = tf.data.TFRecordDataset(file_names, buffer_size=1200100)
 
     # Parse it in parallel
     num_slaves = mp.cpu_count()
@@ -120,13 +132,12 @@ def get_all_records(file_names,num_images = 10):
         for i in range(num_images):
             # Get 'em 
             img, anns, f_names = sess.run([image, annotations, img_filename])
-                    
+            
             # Take the first element because of batching
             images[i] = img[0] 
             img_filenames[i] = f_names[0]
             bboxes[i] = anns[0][0]
-            classes[i] = anns[1][0]
-
+            classes[i] = anns[1][0]  
     return images, bboxes, classes, img_filenames
 
 def peek(record, 
@@ -190,14 +201,14 @@ def peek(record,
                                 catids,use_normalized_coordinates=True)
             plt.imshow(vandalized)
             ttl = "{} \n {}/{}"
-            plt.title(ttl.format(f_names[i],i,num_images))
+            plt.title(ttl.format(f_names[i][0],i,num_images))
             while True:
                 if plt.waitforbuttonpress():
                     break
 
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(usage=_usg)
 
     parser.add_argument('--record',
                         type = str,
@@ -219,6 +230,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args()    
 
-    #hmm = '/home/jroberts/basil_lab/tensorflow-models/research/object_detection/adas_utils/Syncity_test/tfrecords/adas_train.record-00000-of-00001'
-    hmm = '/mnt/fruitbasket/users/jroberts/ADAS/thermal_adas_real_15306/tfrecords_clean/adas_train.record-00000-of-00002'
-    peek(hmm,args.catids, num_images=args.num_images, save_dir=args.save_dir)
+    peek(args.record,args.catids, num_images=args.num_images, save_dir=args.save_dir)
