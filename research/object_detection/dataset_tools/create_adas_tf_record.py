@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-r"""Convert raw adas dataset to TFRecord for object_detection.
+r"""8/20/2018 @jroberts
+    Convert raw adas dataset to TFRecord for object_detection.
     Expects all images in jpeg compression format.
     Please note that this tool creates sharded output files.
+
+    If the a directory flag is ommited it is skipped. 
 
 Example usage:
     python create_adas_tf_record.py --logtostderr \
@@ -26,6 +29,10 @@ Example usage:
       --val_annotations_file="${VAL_ANNOTATIONS_FILE}" \
       --testdev_annotations_file="${TESTDEV_ANNOTATIONS_FILE}" \
       --output_dir="${OUTPUT_DIR}"
+
+    Assumes all data is greyscale with 3 channels to agree with mscoco models.
+    If you are not sure if this is the case run adas_utils/pseudo_color.py for 
+    your directory. Putting channel checks here severly impacts performance. 
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -63,9 +70,12 @@ tf.flags.DEFINE_string('train_annotations_file', '',
                        'Training annotations JSON file.')
 tf.flags.DEFINE_string('val_annotations_file', '',
                        'Validation annotations JSON file.')
+tf.flags.DEFINE_string('test_annotations_file', '',
+                       'Test annotations JSON file.')
 tf.flags.DEFINE_string('output_dir', '/tmp/', 'Output data directory.')
 tf.flags.DEFINE_integer('train_shards',1,'number of shards to break the training set into')
 tf.flags.DEFINE_integer('val_shards',1,'number of shards to break the val set into')
+tf.flags.DEFINE_integer('test_shards',1,'number of shards to break the test set into')
 FLAGS = flags.FLAGS
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -97,6 +107,10 @@ def create_tf_example(image,
       by the 'id' field of each category.  See the
       label_map_util.create_category_index function.
     include_masks: Whether to include instance segmentations masks
+  image1 = PIL.Image.open(encoded_jpg_io)
+  ar = np.array(image1)
+  print(ar.shape)
+  assert len(ar.shape) , "File {} is not greyscale".format(filename)
       (PNG encoded) in the result. default: False.
   Returns:
     example: The converted tf.Example
@@ -111,11 +125,10 @@ def create_tf_example(image,
   image_id = image['id']
 
   full_path = os.path.join(image_dir, filename)
+  #print(full_path)
   with tf.gfile.GFile(full_path, 'rb') as fid:
     encoded_jpg = fid.read()
   encoded_jpg_io = io.BytesIO(encoded_jpg)
-  
-
   image = PIL.Image.open(encoded_jpg_io).convert(mode='RGB')
   
   msg = """ 
@@ -123,6 +136,8 @@ def create_tf_example(image,
             compression but found .{}.
                 {}
         """
+  # Check image is correct format
+  # TODO: skip incompatible images and dump a list of them.
   assert imghdr.what(full_path) == 'jpeg', msg.format(imghdr.what(full_path),full_path)
 
   key = hashlib.sha256(encoded_jpg).hexdigest()
@@ -195,10 +210,6 @@ def create_tf_example(image,
       'image/object/area':
           dataset_util.float_list_feature(area),
   }
-  #keyz = [k for k in feature_dict.keys() if k != 'image/encoded']
-  #for k in keyz:
-  #  print(k+':',feature_dict[k])
-  #assert False
   
   if include_masks:
     feature_dict['image/object/mask'] = (
@@ -264,28 +275,38 @@ def _create_tf_record_from_adas_annotations(
 
 
 def main(_):
-  assert FLAGS.train_image_dir, '`train_image_dir` missing.'
-  assert FLAGS.val_image_dir, '`val_image_dir` missing.'
-  assert FLAGS.train_annotations_file, '`train_annotations_file` missing.'
-  assert FLAGS.val_annotations_file, '`val_annotations_file` missing.'
+    if not tf.gfile.IsDirectory(FLAGS.output_dir):
+        tf.gfile.MakeDirs(FLAGS.output_dir)
+    train_output_path = os.path.join(FLAGS.output_dir, 'adas_train.record')
+    val_output_path = os.path.join(FLAGS.output_dir, 'adas_val.record')
+    testdev_output_path = os.path.join(FLAGS.output_dir, 'adas_val.record')
 
-  if not tf.gfile.IsDirectory(FLAGS.output_dir):
-    tf.gfile.MakeDirs(FLAGS.output_dir)
-  train_output_path = os.path.join(FLAGS.output_dir, 'adas_train.record')
-  val_output_path = os.path.join(FLAGS.output_dir, 'adas_val.record')
-
-  _create_tf_record_from_adas_annotations(
-      FLAGS.train_annotations_file,
-      FLAGS.train_image_dir,
-      train_output_path,
-      FLAGS.include_masks,
-      num_shards=FLAGS.train_shards)
-  _create_tf_record_from_adas_annotations(
-      FLAGS.val_annotations_file,
-      FLAGS.val_image_dir,
-      val_output_path,
-      FLAGS.include_masks,
-      num_shards=FLAGS.val_shards)
+    if FLAGS.train_image_dir:
+        print('Creating Training records')
+        _create_tf_record_from_adas_annotations(
+        FLAGS.train_annotations_file,
+        FLAGS.train_image_dir,
+        train_output_path,
+        FLAGS.include_masks,
+        num_shards=FLAGS.train_shards)
+    
+    if FLAGS.val_image_dir:
+        print('Creating Validation records')
+        _create_tf_record_from_adas_annotations(
+        FLAGS.val_annotations_file,
+        FLAGS.val_image_dir,
+        val_output_path,
+        FLAGS.include_masks,
+        num_shards=FLAGS.val_shards)
+    
+    if FLAGS.test_image_dir:
+        print('Creating Test records')
+        _create_tf_record_from_adas_annotations(
+        FLAGS.test_annotations_file,
+        FLAGS.test_image_dir,
+        testdev_output_path,
+        FLAGS.include_masks,
+        num_shards=FLAGS.test_shards)
 
 if __name__ == '__main__':
   tf.app.run()
