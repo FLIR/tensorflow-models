@@ -213,6 +213,10 @@ def create_tf_example(image,
       'image/object/area':
           dataset_util.float_list_feature(area),
   }
+  #keyz = [k for k in feature_dict.keys() if k != 'image/encoded']
+  #for k in keyz:
+  #  print(k+':',feature_dict[k])
+  #assert False
   
   if include_masks:
     feature_dict['image/object/mask'] = (
