@@ -53,6 +53,7 @@ CUDA_VISIBLE_DEVICES=$gpus python object_detection/model_main.py \
     --num_eval_steps=${NUM_EVAL_STEPS} \
     --alsologtostderr
 
+<<<<<<< HEAD
 
 if $FREEZE  
 then
@@ -74,3 +75,20 @@ then
       --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
       --output_directory=${EXPORT_DIR}
 fi
+=======
+echo "==========================="
+echo "Freezing the trained graph"
+echo "==========================="
+# From tensorflow/models/research/
+INPUT_TYPE=image_tensor
+PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
+TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
+
+EXPORT_DIR=test_freeze
+
+python object_detection/export_inference_graph.py \
+    --input_type=${INPUT_TYPE} \
+    --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
+    --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
+    --output_directory=${EXPORT_DIR}
+>>>>>>> f143b2d057de2ada33ed13e0d2ae1dbc9210e93b
