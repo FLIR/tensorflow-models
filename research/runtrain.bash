@@ -53,9 +53,6 @@ CUDA_VISIBLE_DEVICES=$gpus python object_detection/model_main.py \
     --num_eval_steps=${NUM_EVAL_STEPS} \
     --alsologtostderr
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-
 if $FREEZE  
 then
   echo "==========================="
@@ -76,9 +73,7 @@ then
       --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
       --output_directory=${EXPORT_DIR}
 fi
-=======
-=======
->>>>>>> f143b2d057de2ada33ed13e0d2ae1dbc9210e93b
+
 echo "==========================="
 echo "Freezing the trained graph"
 echo "==========================="
@@ -93,9 +88,4 @@ python object_detection/export_inference_graph.py \
     --input_type=${INPUT_TYPE} \
     --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
     --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
-<<<<<<< HEAD
     --output_directory=${EXPORT_DIR}
->>>>>>> f143b2d057de2ada33ed13e0d2ae1dbc9210e93b
-=======
-    --output_directory=${EXPORT_DIR}
->>>>>>> f143b2d057de2ada33ed13e0d2ae1dbc9210e93b
