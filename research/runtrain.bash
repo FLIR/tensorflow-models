@@ -29,7 +29,7 @@ while getopts 'hg:t:e:m:p:f' flag; do
     e) NUM_EVAL_STEPS="${OPTARG}" ;;
     m) MODEL_DIR="${OPTARG}" ;;
     p) PIPELINE_CONFIG_PATH="${OPTARG}" ;;
-    f) FREEZE=true ;;
+    f) FREEZE=false ;;
     h) print_usage && exit;;
     *) print_usage && exit
        exit 1 ;;
