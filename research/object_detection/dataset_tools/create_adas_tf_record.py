@@ -125,7 +125,10 @@ def create_tf_example(image,
   image_id = image['id']
 
   full_path = os.path.join(image_dir, filename)
-  #print(full_path)
+  # add in .jpeg if necessary
+  if os.path.splitext(full_path)[1] == '':
+      full_path+='.jpeg'
+  
   with tf.gfile.GFile(full_path, 'rb') as fid:
     encoded_jpg = fid.read()
   encoded_jpg_io = io.BytesIO(encoded_jpg)
@@ -250,6 +253,8 @@ def _create_tf_record_from_adas_annotations(
           annotations_index[image_id] = []
         annotations_index[image_id].append(annotation)
     missing_annotation_count = 0
+    # Here it removes images without associated annotations in the 
+    # annotations json.
     for image in images:
       image_id = image['id']
       if image_id not in annotations_index:
@@ -262,6 +267,7 @@ def _create_tf_record_from_adas_annotations(
     t0 = time.time()
     for idx, image in enumerate(images):
       if idx % 500 == 0:
+      #if idx % 50 == 0:
         tf.logging.info('On image %d of %d. (%.4f secs)', idx, len(images), time.time()-t0)
         t0 = time.time()
       annotations_list = annotations_index[image['id']]
