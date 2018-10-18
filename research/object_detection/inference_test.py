@@ -33,11 +33,11 @@ PRE_TRAINED_ZOO = {
     'recent':'../testnet_freeze/frozen_inference_graph.pb'
     }
 
-def load_image_into_numpy_array(image,adas=False):
+def load_image_into_numpy_array(image,grey=False):
     (im_width, im_height) = image.size
     result = np.array(image.getdata())
 
-    if adas:
+    if grey:
         presult = result.reshape((im_height, im_width)).astype(np.uint8)
         
         result = np.zeros((im_height,im_width,3))
@@ -107,7 +107,10 @@ def run_inference_for_single_image(images, graph):
 
     return detection_results, time_results
 
-
+def invert_normalized_coord(im_width,im_height,norm_coords):
+    ymin, xmin, ymax, xmax = norm_coords
+    (left, right, top, bottom) = (xmin * im_width, xmax * im_width,
+                                  ymin * im_height, ymax * im_height)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -124,8 +127,8 @@ if __name__ == "__main__":
                         default=None
                         )
     
-    parser.add_argument('--adas',
-                        help='Path to a froze pb file for inference. If model_name is also specified this will be used instead',
+    parser.add_argument('--grey',
+                        help='Whether data is greyscale or not. If False assumes image is color. Assumes grey is ADAS data',
                         type=bool,
                         default=False
                         )
@@ -166,7 +169,7 @@ if __name__ == "__main__":
     print(mdl_msg.format(PATH_TO_FROZEN_GRAPH))
 
     # List of the strings that is used to add correct label for each box.
-    if args.adas:
+    if args.grey:
         PATH_TO_LABELS = os.path.join('data', 'adas_label_map.pbtxt')    
     else:
         PATH_TO_LABELS = os.path.join('data', 'mscoco_label_map.pbtxt')
@@ -193,6 +196,7 @@ if __name__ == "__main__":
     TEST_IMAGE_PATHS = [x for x in TEST_IMAGE_PATHS if os.path.basename(x).split('.')[-1] in ['jpg','jpeg']]
 
     test_images = []
+    out_results = []
     for  i,image_path in enumerate(TEST_IMAGE_PATHS):
         N = len(TEST_IMAGE_PATHS)
         N = int(np.sqrt(N))
@@ -201,7 +205,7 @@ if __name__ == "__main__":
         
         # the array based representation of the image will be used later in order to prepare the
         # result image with boxes and labels on it.
-        image_np = load_image_into_numpy_array(image,adas=args.adas)
+        image_np = load_image_into_numpy_array(image,grey=args.grey)
 
         # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
         #image_np_expanded = np.expand_dims(image_np, axis=0)
@@ -214,6 +218,9 @@ if __name__ == "__main__":
     # Run the test
 
     output_dicts, time_results = run_inference_for_single_image(test_images, detection_graph)
+    out_results.append(output_dicts)
+    print(output_dicts)
+    assert False
     print(time_results)
     if args.plot:
         for i,output_dict in enumerate(output_dicts):
@@ -234,3 +241,4 @@ if __name__ == "__main__":
             plt.imshow(image_np)
     if args.plot:
         plt.show()
+    
