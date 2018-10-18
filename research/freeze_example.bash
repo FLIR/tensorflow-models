@@ -42,9 +42,10 @@ TRAINED_CKPT_PREFIX=$CKPT_DIR"/model.ckpt-"$CKPT_NUM
 EXPORT_DIR=$CKPT_DIR"/frozen"
 INPUT_TYPE=image_tensor
 INPUT_TYPE=image_tensor
-(tensorflow) jroberts@pear:~/basil_lab/tensorflow-models/research$
+
 python object_detection/export_inference_graph.py \
      --input_type=${INPUT_TYPE} \
      --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
      --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
-     --output_directory=${EXPORT_DIR}(tensorflow)^C
+     --output_directory=${EXPORT_DIR}
+
