@@ -143,7 +143,7 @@ def get_all_records(file_names,num_images = 10):
 def peek(record, 
         catids, 
         num_images = 10, 
-        plot = True, 
+        #plot = True, 
         save_dir = None):
     """
     Views num_images images from tfrecords in the list records. Optional
@@ -160,6 +160,7 @@ def peek(record,
     --------
         None. Either plots or saves the annotated images based on inputs.
     """
+    plot = save_dir is None
     # Convert catids to category_index as using in 
     # visualization_utils.visualize_boxes_and_labels_on_image_array()
     with open(catids,'r') as fj:
@@ -210,17 +211,14 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(usage=_usg)
 
-    parser.add_argument('--record',
-                        type = str,
+    parser.add_argument('--record', type = str,
                         help = 'Path to ADAS tfrecord file.')
 
-    parser.add_argument('--catids',
-                        type = str,
+    parser.add_argument('--catids', type = str,
                         help = 'Path to catids file.',
                         default = '/mnt/fruitbasket/users/jroberts/ADAS/thermal_adas_real_15306/merged/catids.json')
 
-    parser.add_argument('--num-images',
-                        type = int,
+    parser.add_argument('--num-images', type = int,
                         default = 10,
                         help = 'Number of images to display for your viewing pleasure.')
     
@@ -230,4 +228,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args()    
 
-    peek(args.record,args.catids, num_images=args.num_images, save_dir=args.save_dir)
+    peek(args.record, args.catids, num_images=args.num_images, save_dir=args.save_dir)
