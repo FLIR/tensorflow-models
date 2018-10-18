@@ -21,11 +21,13 @@ from __future__ import print_function
 import atexit
 import contextlib
 import gc
+import hashlib
 import multiprocessing
 import json
 import os
 import pickle
 import signal
+import socket
 import subprocess
 import time
 import timeit
@@ -46,11 +48,23 @@ from official.recommendation import stat_utils
 from official.recommendation import popen_helper
 
 
+DATASET_TO_NUM_USERS_AND_ITEMS = {
+    "ml-1m": (6040, 3706),
+    "ml-20m": (138493, 26744)
+}
+
+
+# Number of batches to run per epoch when using synthetic data. At high batch
+# sizes, we run for more batches than with real data, which is good since
+# running more batches reduces noise when measuring the average batches/second.
+_SYNTHETIC_BATCHES_PER_EPOCH = 2000
+
+
 class NCFDataset(object):
   """Container for training and testing data."""
 
   def __init__(self, user_map, item_map, num_data_readers, cache_paths,
-               num_train_positives):
+               num_train_positives, deterministic=False):
     # type: (dict, dict, int, rconst.Paths) -> None
     """Assign key values for recommendation dataset.
 
@@ -61,6 +75,8 @@ class NCFDataset(object):
       cache_paths: Object containing locations for various cache files.
       num_train_positives: The number of positive training examples in the
         dataset.
+      deterministic: Operations should use deterministic, order preserving
+        methods, even at the cost of performance.
     """
 
     self.user_map = {int(k): int(v) for k, v in user_map.items()}
@@ -70,10 +86,11 @@ class NCFDataset(object):
     self.num_data_readers = num_data_readers
     self.cache_paths = cache_paths
     self.num_train_positives = num_train_positives
+    self.deterministic = deterministic
 
 
-def _filter_index_sort(raw_rating_path):
-  # type: (str) -> (pd.DataFrame, dict, dict)
+def _filter_index_sort(raw_rating_path, match_mlperf):
+  # type: (str, bool) -> (pd.DataFrame, dict, dict)
   """Read in data CSV, and output structured data.
 
   This function reads in the raw CSV of positive items, and performs three
@@ -98,6 +115,8 @@ def _filter_index_sort(raw_rating_path):
 
   Args:
     raw_rating_path: The path to the CSV which contains the raw dataset.
+    match_mlperf: If True, change the sorting algorithm to match the MLPerf
+      reference implementation.
 
   Returns:
     A filtered, zero-index remapped, sorted dataframe, a dict mapping raw user
@@ -136,8 +155,18 @@ def _filter_index_sort(raw_rating_path):
   # This sort is used to shard the dataframe by user, and later to select
   # the last item for a user to be used in validation.
   tf.logging.info("Sorting by user, timestamp...")
-  df.sort_values([movielens.USER_COLUMN, movielens.TIMESTAMP_COLUMN],
-                 inplace=True)
+
+  if match_mlperf:
+    # This sort is equivalent to the non-MLPerf sort, except that the order of
+    # items with the same user and timestamp are sometimes different. For some
+    # reason, this sort results in a better hit-rate during evaluation, matching
+    # the performance of the MLPerf reference implementation.
+    df.sort_values(by=movielens.TIMESTAMP_COLUMN, inplace=True)
+    df.sort_values([movielens.USER_COLUMN, movielens.TIMESTAMP_COLUMN],
+                   inplace=True, kind="mergesort")
+  else:
+    df.sort_values([movielens.USER_COLUMN, movielens.TIMESTAMP_COLUMN],
+                   inplace=True)
 
   df = df.reset_index()  # The dataframe does not reconstruct indicies in the
   # sort or filter steps.
@@ -169,12 +198,16 @@ def _train_eval_map_fn(args):
       which validation negatives should be drawn.
     cache_paths: rconst.Paths object containing locations for various cache
       files.
+    seed: Random seed to be used when generating testing negatives.
+    match_mlperf: If True, sample eval negative with replacements, which the
+      MLPerf reference implementation does.
 
   Returns:
     A dict containing the evaluation data for a given shard.
   """
 
-  shard, shard_id, num_items, cache_paths = args
+  shard, shard_id, num_items, cache_paths, seed, match_mlperf = args
+  np.random.seed(seed)
 
   users = shard[movielens.USER_COLUMN]
   items = shard[movielens.ITEM_COLUMN]
@@ -203,7 +236,7 @@ def _train_eval_map_fn(args):
 
     test_negatives = stat_utils.sample_with_exclusion(
         num_items=num_items, positive_set=set(block_items),
-        n=rconst.NUM_EVAL_NEGATIVES, replacement=False)
+        n=rconst.NUM_EVAL_NEGATIVES, replacement=match_mlperf)
     test_blocks.append((
         block_user[0] * np.ones((rconst.NUM_EVAL_NEGATIVES + 1,),
                                 dtype=np.int32),
@@ -234,8 +267,9 @@ def _train_eval_map_fn(args):
   }
 
 
-def generate_train_eval_data(df, approx_num_shards, num_items, cache_paths):
-  # type: (pd.DataFrame, int, int, rconst.Paths) -> None
+def generate_train_eval_data(df, approx_num_shards, num_items, cache_paths,
+                             match_mlperf):
+  # type: (pd.DataFrame, int, int, rconst.Paths, bool) -> None
   """Construct training and evaluation datasets.
 
   This function manages dataset construction and validation that the
@@ -257,6 +291,8 @@ def generate_train_eval_data(df, approx_num_shards, num_items, cache_paths):
     num_items: The cardinality of the item set.
     cache_paths: rconst.Paths object containing locations for various cache
       files.
+    match_mlperf: If True, sample eval negative with replacements, which the
+      MLPerf reference implementation does.
   """
 
   num_rows = len(df)
@@ -290,11 +326,14 @@ def generate_train_eval_data(df, approx_num_shards, num_items, cache_paths):
   tf.logging.info("Splitting train and test data and generating {} test "
                   "negatives per user...".format(rconst.NUM_EVAL_NEGATIVES))
   tf.gfile.MakeDirs(cache_paths.train_shard_subdir)
-  map_args = [(shards[i], i, num_items, cache_paths)
-              for i in range(approx_num_shards)]
 
-  with contextlib.closing(
-      multiprocessing.Pool(multiprocessing.cpu_count())) as pool:
+  # We choose a different random seed for each process, so that the processes
+  # will not all choose the same random numbers.
+  process_seeds = [np.random.randint(2**32) for _ in range(approx_num_shards)]
+  map_args = [(shards[i], i, num_items, cache_paths, process_seeds[i],
+               match_mlperf)
+              for i in range(approx_num_shards)]
+  with popen_helper.get_pool(multiprocessing.cpu_count()) as pool:
     test_shards = pool.map(_train_eval_map_fn, map_args)  # pylint: disable=no-member
 
   tf.logging.info("Merging test shards...")
@@ -317,8 +356,9 @@ def generate_train_eval_data(df, approx_num_shards, num_items, cache_paths):
     pickle.dump(eval_data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def construct_cache(dataset, data_dir, num_data_readers):
-  # type: (str, str, int, int, bool) -> NCFDataset
+def construct_cache(dataset, data_dir, num_data_readers, match_mlperf,
+                    deterministic, cache_id=None):
+  # type: (str, str, int, bool, typing.Optional[int]) -> NCFDataset
   """Load and digest data CSV into a usable form.
 
   Args:
@@ -326,8 +366,12 @@ def construct_cache(dataset, data_dir, num_data_readers):
     data_dir: The root directory of the dataset.
     num_data_readers: The number of parallel processes which will request
       data during training.
+    match_mlperf: If True, change the behavior of the cache construction to
+      match the MLPerf reference implementation.
+    deterministic: Try to enforce repeatable behavior, even at the cost of
+      performance.
   """
-  cache_paths = rconst.Paths(data_dir=data_dir)
+  cache_paths = rconst.Paths(data_dir=data_dir, cache_id=cache_id)
   num_data_readers = (num_data_readers or int(multiprocessing.cpu_count() / 2)
                       or 1)
   approx_num_shards = int(movielens.NUM_RATINGS[dataset]
@@ -342,16 +386,26 @@ def construct_cache(dataset, data_dir, num_data_readers):
   tf.gfile.MakeDirs(cache_paths.cache_root)
 
   raw_rating_path = os.path.join(data_dir, dataset, movielens.RATINGS_FILE)
-  df, user_map, item_map = _filter_index_sort(raw_rating_path)
+  df, user_map, item_map = _filter_index_sort(raw_rating_path, match_mlperf)
+  num_users, num_items = DATASET_TO_NUM_USERS_AND_ITEMS[dataset]
+
+  if num_users != len(user_map):
+    raise ValueError("Expected to find {} users, but found {}".format(
+        num_users, len(user_map)))
+  if num_items != len(item_map):
+    raise ValueError("Expected to find {} items, but found {}".format(
+        num_items, len(item_map)))
 
   generate_train_eval_data(df=df, approx_num_shards=approx_num_shards,
-                           num_items=len(item_map), cache_paths=cache_paths)
+                           num_items=len(item_map), cache_paths=cache_paths,
+                           match_mlperf=match_mlperf)
   del approx_num_shards  # value may have changed.
 
   ncf_dataset = NCFDataset(user_map=user_map, item_map=item_map,
                            num_data_readers=num_data_readers,
                            cache_paths=cache_paths,
-                           num_train_positives=len(df) - len(user_map))
+                           num_train_positives=len(df) - len(user_map),
+                           deterministic=deterministic)
 
   run_time = timeit.default_timer() - st
   tf.logging.info("Cache construction complete. Time: {:.1f} sec."
@@ -365,10 +419,14 @@ def _shutdown(proc):
   """Convenience function to cleanly shut down async generation process."""
 
   tf.logging.info("Shutting down train data creation subprocess.")
-  proc.send_signal(signal.SIGINT)
-  time.sleep(1)
-  if proc.returncode is not None:
-    return  # SIGINT was handled successfully within 1 sec
+  try:
+    proc.send_signal(signal.SIGINT)
+    time.sleep(1)
+    if proc.returncode is not None:
+      return  # SIGINT was handled successfully within 1 sec
+
+  except socket.error:
+    pass
 
   # Otherwise another second of grace period and then forcibly kill the process.
   time.sleep(1)
@@ -376,55 +434,99 @@ def _shutdown(proc):
 
 
 def instantiate_pipeline(dataset, data_dir, batch_size, eval_batch_size,
-                         num_data_readers=None, num_neg=4, epochs_per_cycle=1):
+                         num_data_readers=None, num_neg=4, epochs_per_cycle=1,
+                         match_mlperf=False, deterministic=False,
+                         use_subprocess=True, cache_id=None):
+  # type: (...) -> (NCFDataset, typing.Callable)
   """Preprocess data and start negative generation subprocess."""
 
   tf.logging.info("Beginning data preprocessing.")
   ncf_dataset = construct_cache(dataset=dataset, data_dir=data_dir,
-                                num_data_readers=num_data_readers)
-
-  tf.logging.info("Creating training file subprocess.")
-
-  subproc_env = os.environ.copy()
-
-  # The subprocess uses TensorFlow for tf.gfile, but it does not need GPU
-  # resources and by default will try to allocate GPU memory. This would cause
-  # contention with the main training process.
-  subproc_env["CUDA_VISIBLE_DEVICES"] = ""
-
+                                num_data_readers=num_data_readers,
+                                match_mlperf=match_mlperf,
+                                deterministic=deterministic,
+                                cache_id=cache_id)
   # By limiting the number of workers we guarantee that the worker
   # pool underlying the training generation doesn't starve other processes.
   num_workers = int(multiprocessing.cpu_count() * 0.75) or 1
 
-  subproc_args = popen_helper.INVOCATION + [
-      "--data_dir", data_dir,
-      "--cache_id", str(ncf_dataset.cache_paths.cache_id),
-      "--num_neg", str(num_neg),
-      "--num_train_positives", str(ncf_dataset.num_train_positives),
-      "--num_items", str(ncf_dataset.num_items),
-      "--num_readers", str(ncf_dataset.num_data_readers),
-      "--epochs_per_cycle", str(epochs_per_cycle),
-      "--train_batch_size", str(batch_size),
-      "--eval_batch_size", str(eval_batch_size),
-      "--num_workers", str(num_workers),
-      "--spillover", "True",  # This allows the training input function to
-                              # guarantee batch size and significantly improves
-                              # performance. (~5% increase in examples/sec on
-                              # GPU, and needed for TPU XLA.)
-      "--redirect_logs", "True",
-      "--seed", str(int(stat_utils.random_int32()))
-  ]
-
+  flags_ = {
+      "data_dir": data_dir,
+      "cache_id": ncf_dataset.cache_paths.cache_id,
+      "num_neg": num_neg,
+      "num_train_positives": ncf_dataset.num_train_positives,
+      "num_items": ncf_dataset.num_items,
+      "num_readers": ncf_dataset.num_data_readers,
+      "epochs_per_cycle": epochs_per_cycle,
+      "train_batch_size": batch_size,
+      "eval_batch_size": eval_batch_size,
+      "num_workers": num_workers,
+      # This allows the training input function to guarantee batch size and
+      # significantly improves performance. (~5% increase in examples/sec on
+      # GPU, and needed for TPU XLA.)
+      "spillover": True,
+      "redirect_logs": use_subprocess,
+      "use_tf_logging": not use_subprocess,
+  }
+  if ncf_dataset.deterministic:
+    flags_["seed"] = stat_utils.random_int32()
+  tf.gfile.MakeDirs(data_dir)
+  # We write to a temp file then atomically rename it to the final file,
+  # because writing directly to the final file can cause the data generation
+  # async process to read a partially written JSON file.
+  flagfile_temp = os.path.join(ncf_dataset.cache_paths.cache_root,
+                               rconst.FLAGFILE_TEMP)
+  tf.logging.info("Preparing flagfile for async data generation in {} ..."
+                  .format(flagfile_temp))
+  with tf.gfile.Open(flagfile_temp, "w") as f:
+    for k, v in six.iteritems(flags_):
+      f.write("--{}={}\n".format(k, v))
+  flagfile = os.path.join(ncf_dataset.cache_paths.cache_root, rconst.FLAGFILE)
+  tf.gfile.Rename(flagfile_temp, flagfile)
   tf.logging.info(
-      "Generation subprocess command: {}".format(" ".join(subproc_args)))
+      "Wrote flagfile for async data generation in {}."
+      .format(flagfile))
 
-  proc = subprocess.Popen(args=subproc_args, shell=False, env=subproc_env)
+  if use_subprocess:
+    tf.logging.info("Creating training file subprocess.")
+    subproc_env = os.environ.copy()
+    # The subprocess uses TensorFlow for tf.gfile, but it does not need GPU
+    # resources and by default will try to allocate GPU memory. This would cause
+    # contention with the main training process.
+    subproc_env["CUDA_VISIBLE_DEVICES"] = ""
+    subproc_args = popen_helper.INVOCATION + [
+        "--data_dir", data_dir,
+        "--cache_id", str(ncf_dataset.cache_paths.cache_id)]
+    tf.logging.info(
+        "Generation subprocess command: {}".format(" ".join(subproc_args)))
+    proc = subprocess.Popen(args=subproc_args, shell=False, env=subproc_env)
 
-  atexit.register(_shutdown, proc=proc)
-  atexit.register(tf.gfile.DeleteRecursively,
-                  ncf_dataset.cache_paths.cache_root)
+  cleanup_called = {"finished": False}
+  @atexit.register
+  def cleanup():
+    """Remove files and subprocess from data generation."""
+    if cleanup_called["finished"]:
+      return
 
-  return ncf_dataset
+    if use_subprocess:
+      _shutdown(proc)
+
+    try:
+      tf.gfile.DeleteRecursively(ncf_dataset.cache_paths.cache_root)
+    except tf.errors.NotFoundError:
+      pass
+
+    cleanup_called["finished"] = True
+
+  for _ in range(300):
+    if tf.gfile.Exists(ncf_dataset.cache_paths.subproc_alive):
+      break
+    time.sleep(1)  # allow `alive` file to be written
+  if not tf.gfile.Exists(ncf_dataset.cache_paths.subproc_alive):
+    raise ValueError("Generation subprocess did not start correctly. Data will "
+                     "not be available; exiting to avoid waiting forever.")
+
+  return ncf_dataset, cleanup
 
 
 def make_deserialize(params, batch_size, training=False):
@@ -435,6 +537,8 @@ def make_deserialize(params, batch_size, training=False):
   }
   if training:
     feature_map["labels"] = tf.FixedLenFeature([], dtype=tf.string)
+  else:
+    feature_map[rconst.DUPLICATE_MASK] = tf.FixedLenFeature([], dtype=tf.string)
 
   def deserialize(examples_serialized):
     """Called by Dataset.map() to convert batches of records to tensors."""
@@ -448,13 +552,17 @@ def make_deserialize(params, batch_size, training=False):
       items = tf.cast(items, tf.int32)  # TPU doesn't allow uint16 infeed.
 
     if not training:
+      dupe_mask = tf.reshape(tf.cast(tf.decode_raw(
+          features[rconst.DUPLICATE_MASK], tf.int8), tf.bool), (batch_size,))
       return {
           movielens.USER_COLUMN: users,
           movielens.ITEM_COLUMN: items,
+          rconst.DUPLICATE_MASK: dupe_mask,
       }
 
     labels = tf.reshape(tf.cast(tf.decode_raw(
         features["labels"], tf.int8), tf.bool), (batch_size,))
+
     return {
         movielens.USER_COLUMN: users,
         movielens.ITEM_COLUMN: items,
@@ -462,13 +570,56 @@ def make_deserialize(params, batch_size, training=False):
   return deserialize
 
 
+def hash_pipeline(dataset, deterministic):
+  # type: (tf.data.Dataset, bool) -> None
+  """Utility function for detecting non-determinism in the data pipeline.
+
+  Args:
+    dataset: a tf.data.Dataset generated by the input_fn
+    deterministic: Does the input_fn expect the dataset to be deterministic.
+      (i.e. fixed seed, sloppy=False, etc.)
+  """
+  if not deterministic:
+    tf.logging.warning("Data pipeline is not marked as deterministic. Hash "
+                       "values are not expected to be meaningful.")
+
+  batch = dataset.make_one_shot_iterator().get_next()
+  md5 = hashlib.md5()
+  count = 0
+  first_batch_hash = b""
+  with tf.Session() as sess:
+    while True:
+      try:
+        result = sess.run(batch)
+        if isinstance(result, tuple):
+          result = result[0]  # only hash features
+      except tf.errors.OutOfRangeError:
+        break
+
+      count += 1
+      md5.update(memoryview(result[movielens.USER_COLUMN]).tobytes())
+      md5.update(memoryview(result[movielens.ITEM_COLUMN]).tobytes())
+      if count == 1:
+        first_batch_hash = md5.hexdigest()
+  overall_hash = md5.hexdigest()
+  tf.logging.info("Batch count: {}".format(count))
+  tf.logging.info("  [pipeline_hash] First batch hash: {}".format(
+      first_batch_hash))
+  tf.logging.info("  [pipeline_hash] All batches hash: {}".format(overall_hash))
+
+
 def make_train_input_fn(ncf_dataset):
-  # type: (NCFDataset) -> (typing.Callable, str, int)
+  # type: (typing.Optional[NCFDataset]) -> (typing.Callable, str, int)
   """Construct training input_fn for the current epoch."""
 
+  if ncf_dataset is None:
+    return make_train_synthetic_input_fn()
+
   if not tf.gfile.Exists(ncf_dataset.cache_paths.subproc_alive):
-    raise ValueError("Generation subprocess did not start correctly. Data will "
-                     "not be available; exiting to avoid waiting forever.")
+    # The generation subprocess must have been alive at some point, because we
+    # earlier checked that the subproc_alive file existed.
+    raise ValueError("Generation subprocess unexpectedly died. Data will not "
+                     "be available; exiting to avoid waiting forever.")
 
   train_epoch_dir = ncf_dataset.cache_paths.train_epoch_dir
   while not tf.gfile.Exists(train_epoch_dir):
@@ -518,21 +669,56 @@ def make_train_input_fn(ncf_dataset):
         tf.data.TFRecordDataset,
         cycle_length=4,
         block_length=100000,
-        sloppy=True,
+        sloppy=not ncf_dataset.deterministic,
         prefetch_input_elements=4,
     )
 
     deserialize = make_deserialize(params, batch_size, True)
     dataset = record_files.apply(interleave)
     dataset = dataset.map(deserialize, num_parallel_calls=4)
-    return dataset.prefetch(32)
+    dataset = dataset.prefetch(32)
+
+    if params.get("hash_pipeline"):
+      hash_pipeline(dataset, ncf_dataset.deterministic)
+
+    return dataset
 
   return input_fn, record_dir, batch_count
 
 
+def make_train_synthetic_input_fn():
+  """Construct training input_fn that uses synthetic data."""
+  def input_fn(params):
+    """Generated input_fn for the given epoch."""
+    batch_size = params["batch_size"]
+    num_users = params["num_users"]
+    num_items = params["num_items"]
+
+    users = tf.random_uniform([batch_size], dtype=tf.int32, minval=0,
+                              maxval=num_users)
+    items = tf.random_uniform([batch_size], dtype=tf.int32, minval=0,
+                              maxval=num_items)
+    labels = tf.random_uniform([batch_size], dtype=tf.int32, minval=0,
+                               maxval=2)
+
+    data = {
+        movielens.USER_COLUMN: users,
+        movielens.ITEM_COLUMN: items,
+    }, labels
+    dataset = tf.data.Dataset.from_tensors(data).repeat(
+        _SYNTHETIC_BATCHES_PER_EPOCH)
+    dataset = dataset.prefetch(32)
+    return dataset
+
+  return input_fn, None, _SYNTHETIC_BATCHES_PER_EPOCH
+
+
 def make_pred_input_fn(ncf_dataset):
-  # type: (NCFDataset) -> typing.Callable
+  # type: (typing.Optional[NCFDataset]) -> typing.Callable
   """Construct input_fn for metric evaluation."""
+
+  if ncf_dataset is None:
+    return make_synthetic_pred_input_fn()
 
   def input_fn(params):
     """Input function based on eval batch size."""
@@ -550,7 +736,40 @@ def make_pred_input_fn(ncf_dataset):
 
     deserialize = make_deserialize(params, batch_size, False)
     dataset = dataset.map(deserialize, num_parallel_calls=4)
+    dataset = dataset.prefetch(16)
 
-    return dataset.prefetch(16)
+    if params.get("hash_pipeline"):
+      hash_pipeline(dataset, ncf_dataset.deterministic)
+
+    return dataset
+
+  return input_fn
+
+
+def make_synthetic_pred_input_fn():
+  """Construct input_fn for metric evaluation that uses synthetic data."""
+
+  def input_fn(params):
+    """Generated input_fn for the given epoch."""
+    batch_size = params["eval_batch_size"]
+    num_users = params["num_users"]
+    num_items = params["num_items"]
+
+    users = tf.random_uniform([batch_size], dtype=tf.int32, minval=0,
+                              maxval=num_users)
+    items = tf.random_uniform([batch_size], dtype=tf.int32, minval=0,
+                              maxval=num_items)
+    dupe_mask = tf.cast(tf.random_uniform([batch_size], dtype=tf.int32,
+                                          minval=0, maxval=2), tf.bool)
+
+    data = {
+        movielens.USER_COLUMN: users,
+        movielens.ITEM_COLUMN: items,
+        rconst.DUPLICATE_MASK: dupe_mask,
+    }
+    dataset = tf.data.Dataset.from_tensors(data).repeat(
+        _SYNTHETIC_BATCHES_PER_EPOCH)
+    dataset = dataset.prefetch(16)
+    return dataset
 
   return input_fn

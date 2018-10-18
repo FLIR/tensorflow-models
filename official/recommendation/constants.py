@@ -52,12 +52,21 @@ MIN_NUM_RATINGS = 20
 # when performing evaluation.
 NUM_EVAL_NEGATIVES = 999
 
+# keys for evaluation metrics
+TOP_K = 10  # Top-k list for evaluation
+HR_KEY = "HR"
+NDCG_KEY = "NDCG"
+DUPLICATE_MASK = "duplicate_mask"
+
 # ==============================================================================
 # == Subprocess Data Generation ================================================
 # ==============================================================================
 CYCLES_TO_BUFFER = 3  # The number of train cycles worth of data to "run ahead"
                       # of the main training loop.
 
+FLAGFILE_TEMP = "flagfile.temp"
+FLAGFILE = "flagfile"
+READY_FILE_TEMP = "ready.json.temp"
 READY_FILE = "ready.json"
 TRAIN_RECORD_TEMPLATE = "train_{}.tfrecords"
 

@@ -22,7 +22,6 @@ import atexit
 import contextlib
 import datetime
 import gc
-import functools
 import multiprocessing
 import json
 import os
@@ -44,6 +43,7 @@ from absl import flags
 from official.datasets import movielens
 from official.recommendation import constants as rconst
 from official.recommendation import stat_utils
+from official.recommendation import popen_helper
 
 
 _log_file = None
@@ -51,6 +51,10 @@ _log_file = None
 
 def log_msg(msg):
   """Include timestamp info when logging messages to a file."""
+  if flags.FLAGS.use_tf_logging:
+    tf.logging.info(msg)
+    return
+
   if flags.FLAGS.redirect_logs:
     timestamp = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     print("[{}] {}".format(timestamp, msg), file=_log_file)
@@ -64,8 +68,8 @@ def get_cycle_folder_name(i):
   return "cycle_{}".format(str(i).zfill(5))
 
 
-def _process_shard(shard_path, num_items, num_neg):
-  # type: (str, int, int) -> (np.ndarray, np.ndarray, np.ndarray)
+def _process_shard(args):
+  # type: ((str, int, int, int)) -> (np.ndarray, np.ndarray, np.ndarray)
   """Read a shard of training data and return training vectors.
 
   Args:
@@ -74,6 +78,8 @@ def _process_shard(shard_path, num_items, num_neg):
     num_neg: The number of negatives to generate per positive example.
     seed: Random seed to be used when generating negatives.
   """
+  shard_path, num_items, num_neg, seed = args
+  np.random.seed(seed)
 
   # The choice to store the training shards in files rather than in memory
   # is motivated by the fact that multiprocessing serializes arguments,
@@ -123,7 +129,7 @@ def _process_shard(shard_path, num_items, num_neg):
   return users_out, items_out, labels_out
 
 
-def _construct_record(users, items, labels=None):
+def _construct_record(users, items, labels=None, dupe_mask=None):
   """Convert NumPy arrays into a TFRecords entry."""
   feature_dict = {
       movielens.USER_COLUMN: tf.train.Feature(
@@ -134,6 +140,10 @@ def _construct_record(users, items, labels=None):
   if labels is not None:
     feature_dict["labels"] = tf.train.Feature(
         bytes_list=tf.train.BytesList(value=[memoryview(labels).tobytes()]))
+
+  if dupe_mask is not None:
+    feature_dict[rconst.DUPLICATE_MASK] = tf.train.Feature(
+        bytes_list=tf.train.BytesList(value=[memoryview(dupe_mask).tobytes()]))
 
   return tf.train.Example(
       features=tf.train.Features(feature=feature_dict)).SerializeToString()
@@ -159,7 +169,8 @@ def _construct_training_records(
     train_batch_size,     # type: int
     training_shards,      # type: typing.List[str]
     spillover,            # type: bool
-    carryover=None        # type: typing.Union[typing.List[np.ndarray], None]
+    carryover=None,       # type: typing.Union[typing.List[np.ndarray], None]
+    deterministic=False   # type: bool
     ):
   """Generate false negatives and write TFRecords files.
 
@@ -194,13 +205,16 @@ def _construct_training_records(
   num_carryover = carryover[0].shape[0]
   num_pts = num_carryover + num_train_positives * (1 + num_neg)
 
-  map_args = [i for i in training_shards * epochs_per_cycle]
-  map_fn = functools.partial(_process_shard, num_neg=num_neg,
-                             num_items=num_items)
+  # We choose a different random seed for each process, so that the processes
+  # will not all choose the same random numbers.
+  process_seeds = [np.random.randint(2**32)
+                   for _ in training_shards * epochs_per_cycle]
+  map_args = [(shard, num_items, num_neg, process_seeds[i])
+              for i, shard in enumerate(training_shards * epochs_per_cycle)]
 
-  with contextlib.closing(multiprocessing.Pool(
-      processes=num_workers, initializer=init_worker)) as pool:
-    data_generator = pool.imap_unordered(map_fn, map_args)  # pylint: disable=no-member
+  with popen_helper.get_pool(num_workers, init_worker) as pool:
+    map_fn = pool.imap if deterministic else pool.imap_unordered  # pylint: disable=no-member
+    data_generator = map_fn(_process_shard, map_args)
     data = [
         np.zeros(shape=(num_pts,), dtype=np.int32) - 1,
         np.zeros(shape=(num_pts,), dtype=np.uint16),
@@ -278,11 +292,17 @@ def _construct_training_records(
       raise ValueError("Error detected: point counts do not match: {} vs. {}"
                        .format(num_pts, written_pts))
 
-  with tf.gfile.Open(os.path.join(record_dir, rconst.READY_FILE), "w") as f:
+  # We write to a temp file then atomically rename it to the final file, because
+  # writing directly to the final file can cause the main process to read a
+  # partially written JSON file.
+  ready_file_temp = os.path.join(record_dir, rconst.READY_FILE_TEMP)
+  with tf.gfile.Open(ready_file_temp, "w") as f:
     json.dump({
         "batch_size": train_batch_size,
         "batch_count": batch_count,
     }, f)
+  ready_file = os.path.join(record_dir, rconst.READY_FILE)
+  tf.gfile.Rename(ready_file_temp, ready_file)
 
   log_msg("Cycle {} complete. Total time: {:.1f} seconds"
           .format(train_cycle, timeit.default_timer() - st))
@@ -292,6 +312,9 @@ def _construct_training_records(
 
 def _construct_eval_record(cache_paths, eval_batch_size):
   """Convert Eval data to a single TFRecords file."""
+
+  # Later logic assumes that all items for a given user are in the same batch.
+  assert not eval_batch_size % (rconst.NUM_EVAL_NEGATIVES + 1)
 
   log_msg("Beginning construction of eval TFRecords file.")
   raw_fpath = cache_paths.eval_raw_file
@@ -320,26 +343,47 @@ def _construct_eval_record(cache_paths, eval_batch_size):
   num_batches = users.shape[0]
   with tf.python_io.TFRecordWriter(intermediate_fpath) as writer:
     for i in range(num_batches):
+      batch_users = users[i, :]
+      batch_items = items[i, :]
+      dupe_mask = stat_utils.mask_duplicates(
+          batch_items.reshape(-1, rconst.NUM_EVAL_NEGATIVES + 1),
+          axis=1).flatten().astype(np.int8)
+
       batch_bytes = _construct_record(
-          users=users[i, :],
-          items=items[i, :]
+          users=batch_users,
+          items=batch_items,
+          dupe_mask=dupe_mask
       )
       writer.write(batch_bytes)
-  tf.gfile.Copy(intermediate_fpath, dest_fpath)
-  tf.gfile.Remove(intermediate_fpath)
+  tf.gfile.Rename(intermediate_fpath, dest_fpath)
   log_msg("Eval TFRecords file successfully constructed.")
 
 
-def _generation_loop(
-    num_workers, cache_paths, num_readers, num_neg, num_train_positives,
-    num_items, spillover, epochs_per_cycle, train_batch_size, eval_batch_size):
-  # type: (int, rconst.Paths, int, int, int, int, bool, int, int, int) -> None
+def _generation_loop(num_workers,           # type: int
+                     cache_paths,           # type: rconst.Paths
+                     num_readers,           # type: int
+                     num_neg,               # type: int
+                     num_train_positives,   # type: int
+                     num_items,             # type: int
+                     spillover,             # type: bool
+                     epochs_per_cycle,      # type: int
+                     train_batch_size,      # type: int
+                     eval_batch_size,       # type: int
+                     deterministic          # type: bool
+                    ):
+  # type: (...) -> None
   """Primary run loop for data file generation."""
 
   log_msg("Signaling that I am alive.")
   with tf.gfile.Open(cache_paths.subproc_alive, "w") as f:
     f.write("Generation subproc has started.")
-  atexit.register(tf.gfile.Remove, filename=cache_paths.subproc_alive)
+
+  @atexit.register
+  def remove_alive_file():
+    try:
+      tf.gfile.Remove(cache_paths.subproc_alive)
+    except tf.errors.NotFoundError:
+      return  # Main thread has already deleted the entire cache dir.
 
   log_msg("Entering generation loop.")
   tf.gfile.MakeDirs(cache_paths.train_epoch_dir)
@@ -355,7 +399,8 @@ def _generation_loop(
       cache_paths=cache_paths, num_readers=num_readers, num_neg=num_neg,
       num_train_positives=num_train_positives, num_items=num_items,
       epochs_per_cycle=epochs_per_cycle, train_batch_size=train_batch_size,
-      training_shards=training_shards, spillover=spillover, carryover=None)
+      training_shards=training_shards, spillover=spillover, carryover=None,
+      deterministic=deterministic)
 
   _construct_eval_record(cache_paths=cache_paths,
                          eval_batch_size=eval_batch_size)
@@ -388,19 +433,45 @@ def _generation_loop(
         num_train_positives=num_train_positives, num_items=num_items,
         epochs_per_cycle=epochs_per_cycle, train_batch_size=train_batch_size,
         training_shards=training_shards, spillover=spillover,
-        carryover=carryover)
+        carryover=carryover, deterministic=deterministic)
 
     wait_count = 0
     start_time = time.time()
     gc.collect()
 
 
+def _parse_flagfile(flagfile):
+  """Fill flags with flagfile written by the main process."""
+  tf.logging.info("Waiting for flagfile to appear at {}..."
+                  .format(flagfile))
+  start_time = time.time()
+  while not tf.gfile.Exists(flagfile):
+    if time.time() - start_time > rconst.TIMEOUT_SECONDS:
+      log_msg("Waited more than {} seconds. Concluding that this "
+              "process is orphaned and exiting gracefully."
+              .format(rconst.TIMEOUT_SECONDS))
+      sys.exit()
+    time.sleep(1)
+  tf.logging.info("flagfile found.")
+
+  # `flags` module opens `flagfile` with `open`, which does not work on
+  # google cloud storage etc.
+  _, flagfile_temp = tempfile.mkstemp()
+  tf.gfile.Copy(flagfile, flagfile_temp, overwrite=True)
+
+  flags.FLAGS([__file__, "--flagfile", flagfile_temp])
+  tf.gfile.Remove(flagfile_temp)
+
+
 def main(_):
   global _log_file
-  redirect_logs = flags.FLAGS.redirect_logs
   cache_paths = rconst.Paths(
       data_dir=flags.FLAGS.data_dir, cache_id=flags.FLAGS.cache_id)
 
+  flagfile = os.path.join(cache_paths.cache_root, rconst.FLAGFILE)
+  _parse_flagfile(flagfile)
+
+  redirect_logs = flags.FLAGS.redirect_logs
 
   log_file_name = "data_gen_proc_{}.log".format(cache_paths.cache_id)
   log_path = os.path.join(cache_paths.data_dir, log_file_name)
@@ -432,6 +503,7 @@ def main(_):
         epochs_per_cycle=flags.FLAGS.epochs_per_cycle,
         train_batch_size=flags.FLAGS.train_batch_size,
         eval_batch_size=flags.FLAGS.eval_batch_size,
+        deterministic=flags.FLAGS.seed is not None,
     )
   except KeyboardInterrupt:
     log_msg("KeyboardInterrupt registered.")
@@ -447,12 +519,7 @@ def main(_):
 
 
 def define_flags():
-  """Construct flags for the server.
-
-  This function does not use offical.utils.flags, as these flags are not meant
-  to be used by humans. Rather, they should be passed as part of a subprocess
-  call.
-  """
+  """Construct flags for the server."""
   flags.DEFINE_integer(name="num_workers", default=multiprocessing.cpu_count(),
                        help="Size of the negative generation worker pool.")
   flags.DEFINE_string(name="data_dir", default=None,
@@ -486,15 +553,13 @@ def define_flags():
   flags.DEFINE_boolean(name="redirect_logs", default=False,
                        help="Catch logs and write them to a file. "
                             "(Useful if this is run as a subprocess)")
+  flags.DEFINE_boolean(name="use_tf_logging", default=False,
+                       help="Use tf.logging instead of log file.")
   flags.DEFINE_integer(name="seed", default=None,
                        help="NumPy random seed to set at startup. If not "
                             "specified, a seed will not be set.")
 
-  flags.mark_flags_as_required(
-      ["data_dir", "cache_id", "num_neg", "num_train_positives", "num_items",
-       "train_batch_size", "eval_batch_size"])
-
-
+  flags.mark_flags_as_required(["data_dir", "cache_id"])
 
 if __name__ == "__main__":
   define_flags()
