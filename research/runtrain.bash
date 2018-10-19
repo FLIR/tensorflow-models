@@ -29,7 +29,7 @@ while getopts 'hg:t:e:m:p:f' flag; do
     e) NUM_EVAL_STEPS="${OPTARG}" ;;
     m) MODEL_DIR="${OPTARG}" ;;
     p) PIPELINE_CONFIG_PATH="${OPTARG}" ;;
-    f) FREEZE=false ;;
+    f) FREEZE=true ;;
     h) print_usage && exit;;
     *) print_usage && exit
        exit 1 ;;
@@ -74,18 +74,3 @@ then
       --output_directory=${EXPORT_DIR}
 fi
 
-echo "==========================="
-echo "Freezing the trained graph"
-echo "==========================="
-# From tensorflow/models/research/
-INPUT_TYPE=image_tensor
-PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
-TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
-
-EXPORT_DIR=test_freeze
-
-python object_detection/export_inference_graph.py \
-    --input_type=${INPUT_TYPE} \
-    --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
-    --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
-    --output_directory=${EXPORT_DIR}
