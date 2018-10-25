@@ -45,6 +45,7 @@ def run_inference_on_images(graph, image_paths, batch_size=1):
 
     with graph.as_default():
         t0 = time.time()
+        total_time = 0
         with tf.Session() as sess:
             for i in range(N):
                 # Batch fun
@@ -88,8 +89,7 @@ def run_inference_on_images(graph, image_paths, batch_size=1):
                 
                 # Fix detections
                 output_dict['num_detections'] = [int(output_dict['num_detections'][k]) for k in range(len(output_dict['num_detections']))]
-                output_dict['detection_classes'] = output_dict[
-                    'detection_classes'].astype(np.uint8)
+                output_dict['detection_classes'] = output_dict['detection_classes'].astype(np.uint8)
                 output_dict['detection_boxes'] = output_dict['detection_boxes']
                 output_dict['detection_scores'] = output_dict['detection_scores']
                 output_dict['image_id'] = batch_img_paths
@@ -98,9 +98,11 @@ def run_inference_on_images(graph, image_paths, batch_size=1):
                 # Progress report
                 if i % 5 == 0:
                     msg = "Completed batch {} of {}. ({:.2f} secs)"
-                    print(msg.format(i,N,time.time()-t0))
+                    dt = time.time() - t0 
+                    print(msg.format(i,N,dt))
                     t0 = time.time()
-
+                    total_time += dt 
+    print('Total time: {:.2f} secs'.format(total_time))
     return detection_results, inputs.shape
 
 def stringy(l):
@@ -149,7 +151,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     path_to_graph = args.model_pb_file
 
-    print(path_to_graph)
+    start_up_msg =  """ 
+                        Parameters: 
+                        ------------------- 
+                        model pb file: {pb} 
+                        image directory: {img}
+                        number of jpegs found: {num}
+                        batch size: {batch}
+                        output file: {out}
+                        ------------------- """
+                    
     # Build the detection graph
     detection_graph  = tf.Graph()
     with detection_graph.as_default():
@@ -160,9 +171,16 @@ if __name__ == "__main__":
         tf.import_graph_def(od_graph_def, name='')
 
     image_paths = [ os.path.join(args.image_dir, x) for x in os.listdir(args.image_dir) ]
+
     # Get rid of non jp(e)gs
     image_paths = [x for x in image_paths if os.path.basename(x).split('.')[-1] in ['jpg','jpeg']]
-    
+
+    print(start_up_msg.format(pb = args.model_pb_file,
+                              img = args.image_dir,
+                              num=len(image_paths),
+                              batch=args.batch_size,
+                              out = args.output))
+
     # Actual detection graph
     detection_graph = tf.get_default_graph()
 
