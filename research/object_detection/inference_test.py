@@ -159,7 +159,7 @@ if __name__ == "__main__":
         model_path = args.model_pb_file
     
     # Path to frozen detection graph. This is the actual model that is used for the object detection.
-    PATH_TO_FROZEN_GRAPH = PRE_TRAINED_ZOO[model_path]
+    PATH_TO_FROZEN_GRAPH = model_path
     mdl_msg = """
                 =======================================
                 Using model:
