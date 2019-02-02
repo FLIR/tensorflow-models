@@ -1,6 +1,6 @@
 # From tensorflow/models/research/
 
-# Assumes idirectory structure from tensorflow-models/reseach/object_detection/model_main.py
+# Assumes directory structure from tensorflow-models/reseach/object_detection/model_main.py
 # -model_dir/
 #   |--model.ckpt-??????
 #   |--pipeline.config

@@ -151,6 +151,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     path_to_graph = args.model_pb_file
 
+    if args.threshold is None:
+        thresh = 1e-9
+    else:
+        thresh = args.threshold
+
     start_up_msg =  """ 
                         Parameters: 
                         ------------------- 
@@ -226,7 +231,7 @@ if __name__ == "__main__":
                 xmin, xmax = int(img_height*xmin), int(img_height*xmax)
                 # threshold and put in FLIR order
                 #if score >= args.threshold: Change to VERY low for fair mAP comparison
-                if score >= 1e-9:
+                if score >= thresh:
                     Results.append([image_id,d_class, score, xmin, ymin, xmax, ymax])
                 
     # Write results file

@@ -1,3 +1,10 @@
+# Sets up the tensorflow virtualenv
+# unwraps the tensorflow-models proto files
+# Sets the pythonpath
+# Run before using this package
+#   source tensorflow_models_setup.source
+
+
 source ~/tensorflow/bin/activate
 protoc object_detection/protos/*.proto --python_out=.
 export PYTHONPATH=$PYTHONPATH:`pwd`:`pwd`/slim

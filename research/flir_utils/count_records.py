@@ -1,3 +1,11 @@
+"""
+@jroberts: 2/2019
+    Takes a directory of tfrecords and prints the 
+    number of examples in each record.
+    Example usage:
+        python count_records.py Path/TO/RECORDS/DIR/
+        
+"""
 import tensorflow as tf 
 import sys
 import os 

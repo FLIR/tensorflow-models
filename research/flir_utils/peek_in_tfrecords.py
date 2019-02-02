@@ -8,6 +8,7 @@ _usg = """
         
          Will display a slideshow of 10 images. To go to next image us the 
          space bar. If --save-dir is set then the images will not be displayed.
+         Warning: Loads --num-images into memory. So if this is too high it will be slow.
        """
 
 import tensorflow as tf 
@@ -160,12 +161,7 @@ def peek(record,
     --------
         None. Either plots or saves the annotated images based on inputs.
     """
-    plot = save_dir is None
-    # Convert catids to category_index as using in 
-    # visualization_utils.visualize_boxes_and_labels_on_image_array()
-    with open(catids,'r') as fj:
-        idx = json.load(fj)
-    catids = {int(x["id"]):x for x in idx}
+
 
     # Get 'em
     imgs, bbxs, labels, f_names = get_all_records([record], num_images=num_images)
@@ -207,6 +203,22 @@ def peek(record,
                 if plt.waitforbuttonpress():
                     break
 
+def labelvector_to_labelmap(labelvector_path):
+    with open(labelvector_path,'r') as fr:
+        content = json.load(fr)['values']
+    
+    labelmap = { i : str(content[i]) for i in range(len(content))}
+    return labelmap
+
+def catids_to_labelmap(catid_path):
+    # Convert catids to category_index as using in 
+    # visualization_utils.visualize_boxes_and_labels_on_image_array()
+    with open(catid_path,'r') as fj:
+        idx = json.load(fj)
+    labelmap = {int(x["id"]):x for x in idx}
+
+    return labelmap
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(usage=_usg)
@@ -215,8 +227,12 @@ if __name__ == "__main__":
                         help = 'Path to ADAS tfrecord file.')
 
     parser.add_argument('--catids', type = str,
-                        help = 'Path to catids file.',
-                        default = '/mnt/fruitbasket/users/jroberts/ADAS/thermal_adas_real_15306/merged/catids.json')
+                        help = 'Path to catids file. If given labelsvector is ignored',
+                        default = None)
+    
+    parser.add_argument('--labelvector', type = str,
+                        help = 'Path to labelvector.json file. If catids is given this is ignored',
+                        default = None)
 
     parser.add_argument('--num-images', type = int,
                         default = 10,
@@ -228,4 +244,11 @@ if __name__ == "__main__":
     
     args = parser.parse_args()    
 
-    peek(args.record, args.catids, num_images=args.num_images, save_dir=args.save_dir)
+    if args.catids:
+        labels_map = catids_to_labelmap(args.catids)
+    elif args.labelvector:
+        labelmap = labelvector_to_labelmap(args.labelvector)
+    else:
+        raise Exception('Either labelvector or catids must be given')
+  
+    peek(args.record, labelmap, num_images=args.num_images, save_dir=args.save_dir)
