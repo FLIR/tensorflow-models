@@ -115,17 +115,27 @@ while getopts 'hg:t:e:m:p:f' flag; do
   esac
 done
 
-echo "gpus: $gpus"
-echo "train_steps: $NUM_TRAIN_STEPS"
-echo "eval_steps: $NUM_EVAL_STEPS"
-echo "model: $MODEL_DIR"
+info_flags="
+Flags:
+  gpus: $gpus
+  train_steps: $NUM_TRAIN_STEPS
+  eval_steps: $NUM_EVAL_STEPS
+  model: $MODEL_DIR
+"
 
+echo "$info_flags"
 if [ -d "$MODEL_DIR" ]; then
   echo "Model directory exists"
   echo "THIS MAY CAUSE LOADING ISSUES AND STOP THE MODEL FROM TRAINING"
 fi
 
-CUDA_VISIBLE_DEVICES=$gpus python object_detection/model_main.py \
+export CUDA_VISIBLE_DEVICES=$gpus
+
+echo "
+Starting Training
+"
+
+python object_detection/model_main.py \
     --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
     --model_dir=${MODEL_DIR} \
     --num_train_steps=${NUM_TRAIN_STEPS} \
@@ -140,16 +150,37 @@ then
 
   # Set input type to image
   INPUT_TYPE=image_tensor
-  EXPORT_DIR=$MODEL_DIR"_freeze"
+  #EXPORT_DIR=$MODEL_DIR"_freeze"
+  EXPORT_DIR=$MODEL_DIR
 
   # Pick the most recent config which comes from training
   PIPELINE_CONFIG_PATH=$MODEL_DIR/pipeline.config
   TRAINED_CKPT_PREFIX=$MODEL_DIR/model.ckpt-$NUM_TRAIN_STEPS
-
-  CUDA_VISIBLE_DEVICES=$cnd_gpus python object_detection/export_inference_graph.py \
+  
+  python object_detection/export_inference_graph.py \
       --input_type=${INPUT_TYPE} \
       --pipeline_config_path=${PIPELINE_CONFIG_PATH} \
       --trained_checkpoint_prefix=${TRAINED_CKPT_PREFIX} \
       --output_directory=${EXPORT_DIR}
+  
+  info_frozen="
+Frozen Model: $EXPORT_DIR/frozen_inference_graph.pb
+  "
+
+  else
+
+  info_frozen="
+A frozen graph was not generated. You can run 
+    bash freeze_quick.bash $MODEL_DIR
+to generate a frozen graph from the results of this script.
+  "
 fi
 
+echo "
+These models were created using:
+  tensorflow-models/research/runtrain.bash
+$info_flags
+
+Experiment details can be found in pipeline.config.
+$info_frozen
+" > $MODEL_DIR/INFO.txt
