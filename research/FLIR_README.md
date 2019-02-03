@@ -4,6 +4,35 @@
 These are scripts added for FLIR use to tensorflows' models package. The names and a short description of them is given below. For detailed usage please see the scripts documentation.
 
 # tensorflow-models
+- [make_adas_records.bash](make_adas_records.bash):A wrapper for the full tfrecord formation from a FLIRdataset structure. Assumes the directory structure is 
+    ```
+    BASE_DIR
+    |--Annotations/
+    |--(Preview)Data/
+    ```
+    Must have the tensorflow-models/object_detection requirements installed. See:
+            https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md
+            
+    for specifics. Creates the directory and records
+        
+    ```
+    BASE_DIR
+    |--Annotations/
+    |--(Preview)Data/
+    |--tfrecords/
+        |--adas.record-00000-00001
+    |--(Preview)Data_colored*/
+    ```
+
+    (*) Created only if -c is set. This should be set if some greyscale images only have 1 channel. 
+
+    Example:
+    ```sh
+    bash make_adas_records.bash -d /home/jroberts/thermal_adas_15306/merged/ -g 3 -p -c
+    ```
+    Will make tfrecords from the data and annotations in thermal_adas_15306/merged/. It will use gpu device 3, the data should be in the folder PreviewData, and it will "colorize" the data in case it is not 3 channels. 
+
+
 
 - [runtrain.bash](runtrain.bash): The main script for running training of a tf object detector.   Requires the data to be saved in a tfrecord format and a object detection pipeline config file. An example of one   is in this directory called "flir_sample.config"
 
@@ -68,10 +97,11 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
         
     Example Usage:
     ```sh
-    python standart_eval.py --model-pb-file /path/to/frozen_inferance_graph.pb \
-                            --image-dir /path/to/images
+    python standard_eval.py --model-pb-file /path/to/frozen_inference_graph.pb \
+                            --image-dir /path/to/images \
+                            --output output_results.txt
     ```
-    Results are dumped in eval_results.txt.
+    Results are dumped in output_results.txt.
 
 ## adas_utils/
     
