@@ -3,17 +3,19 @@
 
 These are scripts added for FLIR use to tensorflows' models package. The names and a short description of them is given below. For detailed usage please see the scripts documentation.
 
+Most of these require the tensorflow-models/object_detection requirements installed. For specific requirements see:
+            https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md . 
+
 # tensorflow-models
-- [make_adas_records.bash](make_adas_records.bash):A wrapper for the full tfrecord formation from a FLIRdataset structure. Assumes the directory structure is 
+- [make_adas_records.bash](make_adas_records.bash): A wrapper for the full tfrecord formation from a FLIR dataset structure. Assumes the directory structure is 
     ```
     BASE_DIR
     |--Annotations/
     |--(Preview)Data/
     ```
-    Must have the tensorflow-models/object_detection requirements installed. See:
-            https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/installation.md
+    
             
-    for specifics. Creates the directory and records
+    Creates the directory(ies) and records:
         
     ```
     BASE_DIR
@@ -28,13 +30,13 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
 
     Example:
     ```sh
-    bash make_adas_records.bash -d /home/jroberts/thermal_adas_15306/merged/ -g 3 -p -c
+    bash make_adas_records.bash -d ABSOLUTE/PATH/TO/IMAGES -g 3 -p -c
     ```
-    Will make tfrecords from the data and annotations in thermal_adas_15306/merged/. It will use gpu device 3, the data should be in the folder PreviewData, and it will "colorize" the data in case it is not 3 channels. 
+    Will make tfrecords from the data and annotations in ABSOLUTE/PATH/TO/IMAGES. It will use gpu device 3, the data should be in the folder PreviewData, and it will "colorize" the data in case it is not 3 channels. 
 
 
 
-- [runtrain.bash](runtrain.bash): The main script for running training of a tf object detector.   Requires the data to be saved in a tfrecord format and a object detection pipeline config file. An example of one   is in this directory called "flir_sample.config"
+- [runtrain.bash](runtrain.bash): The main script for running training of a tf object detector.   Requires the data to be saved in a tfrecord format and a object detection pipeline config file. An example config file is [flir_sample.config](flir_sample.config).
 
 
     Example:
@@ -42,10 +44,12 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
     bash runtrain.bash -p path/to/pipeline.config -m save/model/here -t 120 -e 34 -g 0,1 -f 
     ```
 
-    will run the experiment defined in path/to/pipeline.config. The config is where the architecture, training data, eval data, fine-tuning checkpoints, and other experiment details are set.
+    will run the experiment defined in path/to/pipeline.config, dump the results in save/model/here, after 120 training steps which are intermittedly interrupted to run 34 evaluation steps, gpu devices 0 and 1 will be used, and at the end it will genreate a frozen inference graph. 
+    
+    The config is where the architecture, training data, eval data, fine-tuning checkpoints, and other experiment details are set.
 
 - [tensorflow_models_setup.source](tensorflow_models_setup.source):
-    Sets up the tensorflow virtualenv, unwraps the tensorflow-models proto files, and sets the pythonpath. Should run before using this package.
+    Sets up the tensorflow virtualenv, unwraps the tensorflow-models proto files, and sets the pythonpath. Can be run before using this package if you have the virtualenv of tensorflow.
 
     Example
     ```sh
@@ -76,13 +80,13 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
     ```
 
 - [peek_in_tfrecords.py](flir_utils/peek_in_tfrecords.py): 
-    Looks inside tfrecords made by object_detection/dataset_tools/create_{adas,coco}_tfrecords.py and displays or saves the images with the annotation boxes on them.
+    Looks inside tfrecords made by [create_adas_tfrecords.py](object_detection/dataset_tools/create_adas_tfrecords.py) and displays or saves the images with the annotation boxes on them.
 
     Example:
 
     ```sh
-        python peek_in_tfrecords.py --record Path/To/Record.tfrecord \\
-                                    --catids Path/To/catids.json \\
+        python peek_in_tfrecords.py --record Path/To/Record.tfrecord \
+                                    --catids Path/To/catids.json \
                                     --num-images 10
     ```
 
