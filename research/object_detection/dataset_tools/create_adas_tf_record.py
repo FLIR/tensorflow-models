@@ -72,7 +72,15 @@ tf.flags.DEFINE_string('val_annotations_file', '',
                        'Validation annotations JSON file.')
 tf.flags.DEFINE_string('test_annotations_file', '',
                        'Test annotations JSON file.')
+
+# Added this to allow general record formation.
+tf.flags.DEFINE_string('image_dir', '',
+                       'Image directory.')
+tf.flags.DEFINE_string('annotations_file', '',
+                       'Annotations JSON file.')
+
 tf.flags.DEFINE_string('output_dir', '/tmp/', 'Output data directory.')
+tf.flags.DEFINE_integer('shards',1,'number of shards to break the set into')
 tf.flags.DEFINE_integer('train_shards',1,'number of shards to break the training set into')
 tf.flags.DEFINE_integer('val_shards',1,'number of shards to break the val set into')
 tf.flags.DEFINE_integer('test_shards',1,'number of shards to break the test set into')
@@ -213,10 +221,6 @@ def create_tf_example(image,
       'image/object/area':
           dataset_util.float_list_feature(area),
   }
-  #keyz = [k for k in feature_dict.keys() if k != 'image/encoded']
-  #for k in keyz:
-  #  print(k+':',feature_dict[k])
-  #assert False
   
   if include_masks:
     feature_dict['image/object/mask'] = (
@@ -290,6 +294,16 @@ def main(_):
     train_output_path = os.path.join(FLAGS.output_dir, 'adas_train.record')
     val_output_path = os.path.join(FLAGS.output_dir, 'adas_val.record')
     testdev_output_path = os.path.join(FLAGS.output_dir, 'adas_val.record')
+    gen_output_path = os.path.join(FLAGS.output_dir,'adas.record')
+
+    if FLAGS.image_dir:
+        print('Creating records')
+        _create_tf_record_from_adas_annotations(
+        FLAGS.annotations_file,
+        FLAGS.image_dir,
+        gen_output_path,
+        FLAGS.include_masks,
+        num_shards=FLAGS.shards)
 
     if FLAGS.train_image_dir:
         print('Creating Training records')
