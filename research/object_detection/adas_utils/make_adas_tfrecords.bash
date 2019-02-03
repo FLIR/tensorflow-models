@@ -23,3 +23,4 @@ python ../dataset_tools/create_adas_tf_record.py --logtostderr \
       --val_annotations_file=$VAL_ANNOTATIONS_FILE \
       --train_shards=$TRAIN_SHARDS \
       --output_dir=$OUTPUT_DIR
+      

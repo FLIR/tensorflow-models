@@ -36,7 +36,7 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
 - [freeze_quick.bash](freeze_quick.bash): 
     A wrapper for freeze.bash when you only want the latest model frozen see freeze.bash for directory structure.
 
-# flir_utils
+# flir_utils/
 
 - [count_records.py](flir_utils/count_records.py): Counts the number of examples in each tfrecord of a given directory.
     
@@ -46,7 +46,8 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
     python count_records.py /$PATH/TO/RECORDS/DIR/
     ```
 
-- [peek_in_tfrecords.py](flir_utils/peek_in_tfrecords.py): Looks inside tfrecords made by object_detection/dataset_tools/create_{adas,coco}_tfrecords.py and displays or saves the images with the annotation boxes on them.
+- [peek_in_tfrecords.py](flir_utils/peek_in_tfrecords.py): 
+    Looks inside tfrecords made by object_detection/dataset_tools/create_{adas,coco}_tfrecords.py and displays or saves the images with the annotation boxes on them.
 
     Example:
 
@@ -58,7 +59,7 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
 
     Will display a slide show of 10 images. To go to next image us the space bar. If --save-dir is set then the images will not be displayed. Warning: Loads --num-images into memory. So if this is too high it will be slow.
 
-# object_detection
+# object_detection/
 
 - [standard_eval.py](object_detection/standard_eval.py):
     Runs inference from a frozen tensorflow .pb graph for object detection on an image directory. The results are formatted to be compatilbe with:
@@ -75,7 +76,7 @@ These are scripts added for FLIR use to tensorflows' models package. The names a
 ## adas_utils/
     
 - [merge_annotations.py](object_detection/adas_utils/merge_annotations.py): 
-Merges annotations found in Annotations directory of an ADAS type datasets into one large annotations json file which is labeled to be consistent with MSCOCO's Annotations jsons.
+    Merges annotations found in Annotations directory of an ADAS type datasets into one large annotations json file which is labeled to be consistent with MSCOCO's Annotations jsons.
 
     Example:
     ```sh
